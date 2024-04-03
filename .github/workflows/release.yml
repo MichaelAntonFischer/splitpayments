@@ -13,32 +13,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Dynamically set the tag name based on the branch or tag
-      - name: Set tag name
-        id: set_tag
+      # Set a static tag name
+      - name: Set static tag and release name
+        id: set_static_name
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
-          else
-            TAG_NAME=$(date +'%Y%m%d%H%M%S')-$(echo $GITHUB_SHA | cut -c1-8)
-            git tag $TAG_NAME
-            echo "::set-output name=tag::$TAG_NAME"
-          fi
-        env:
-          GITHUB_REF: ${{ github.ref }}
+          echo "::set-output name=tag::static-release"
+          echo "::set-output name=release_name::Static Release"
 
-      # Create Release
-      - name: Create Release
-        id: create_release
+      # Check if tag exists and delete it if it does
+      - name: Delete existing tag
+        run: |
+          if git rev-parse ${{ steps.set_static_name.outputs.tag }} >/dev/null 2>&1; then
+            git tag -d ${{ steps.set_static_name.outputs.tag }}
+            git push --delete origin ${{ steps.set_static_name.outputs.tag }}
+          fi
+
+      # Create or move the tag to the current commit
+      - name: Create or move tag
+        run: |
+          git tag -fa ${{ steps.set_static_name.outputs.tag }} -m "${{ steps.set_static_name.outputs.release_name }}"
+          git push origin ${{ steps.set_static_name.outputs.tag }} --force
+
+      # Create or update the release
+      - name: Create or update release
+        id: create_or_update_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.set_tag.outputs.tag }}
-          release_name: Release ${{ steps.set_tag.outputs.tag }}
-          body: |
-            Changes in this Release
-            - First Change
-            - Second Change
+          tag_name: ${{ steps.set_static_name.outputs.tag }}
+          release_name: ${{ steps.set_static_name.outputs.release_name }}
+          body: "Several Changes in this Release"
           draft: false
           prerelease: false
