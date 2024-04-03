@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Configure Git user name and email
+      # Configure Git user name and email address
       - name: Configure Git
         run: |
           git config user.name "GitHub Actions"
