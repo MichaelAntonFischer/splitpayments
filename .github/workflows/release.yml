@@ -7,20 +7,35 @@ on:
       - main
 
 jobs:
-  build:
-    name: Create Release
+  create_release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+
+      # Dynamically set the tag name based on the branch or tag
+      - name: Set tag name
+        id: set_tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME=$(date +'%Y%m%d%H%M%S')-$(echo $GITHUB_SHA | cut -c1-8)
+            git tag $TAG_NAME
+            echo "::set-output name=tag::$TAG_NAME"
+          fi
+        env:
+          GITHUB_REF: ${{ github.ref }}
+
+      # Create Release
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ steps.set_tag.outputs.tag }}
+          release_name: Release ${{ steps.set_tag.outputs.tag }}
           body: |
             Changes in this Release
             - First Change
