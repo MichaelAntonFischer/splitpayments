@@ -12,6 +12,7 @@ from lnbits.core.models import Payment
 from lnbits.core.services import create_invoice, fee_reserve, pay_invoice
 from lnbits.helpers import get_current_extension_name
 from lnbits.tasks import register_invoice_listener
+from .bringin import offramp
 
 from .crud import get_targets
 
