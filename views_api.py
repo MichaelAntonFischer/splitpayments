@@ -1,4 +1,5 @@
 import os
+import time
 
 from http import HTTPStatus
 from typing import List
@@ -30,14 +31,22 @@ async def api_execute_split(wallet_id: str, amount: int) -> None:
     result = await execute_split(wallet_id, amount)
     return result
 
-@splitpayments_ext.post("/api/v1/add_bringin_user", status_code=HTTP_200_OK)
 async def add_bringin_user(lightning_address: str, request: Request):
     body = await request.json()
     signature = request.headers.get("Authorization")
     secret = os.environ["BRINGIN_SECRET"]
 
+    # Extract timestamp from the client's HMAC
+    client_timestamp = int(signature.split()[1].split(':')[0])
+    server_timestamp = int(time.time() * 1000)
+
+    # Check if the timestamp is within a 5-second window (5000 milliseconds)
+    if abs(server_timestamp - client_timestamp) > 5000:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Timestamp is not valid")
+
+    # Generate expected HMAC signature
     expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body)
-    
+
     # Log the generated HMAC and the raw data
     logger.info(f"Generated HMAC: {expected_signature}")
     logger.info(f"Received HMAC: {signature}")
