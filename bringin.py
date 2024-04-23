@@ -16,7 +16,7 @@ async def offramp(lightning_address, amount_sats):
     # Example placeholders - replace with actual values or logic to obtain them
     ip_address = await fetch_public_ip()
 
-    user_api_key = await fetch_users_api_key(os.environ['BRINGIN_KEY'], os.environ['BRINGIN_SECRET'], lightning_address)
+    user_api_key = await fetch_users_api_key(os.environ['BRINGIN_KEY'].strip('"'), os.environ['BRINGIN_SECRET'].strip('"'), lightning_address)
     if user_api_key:
         result = await create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address)
         logger.info(f"Create offramp order returned: {result}")
