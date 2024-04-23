@@ -103,7 +103,7 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
                 print("Invoice not found in the response.")
                 return None
         else:
-            print("Failed to create offramp order. Error code:", response.status_code)
+            print("Failed to create offramp order. Error code:", response.status_code, "Response:", response.text)
             return response.status_code  # Return the error code
 
 async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str):
