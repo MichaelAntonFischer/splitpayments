@@ -37,6 +37,10 @@ async def add_bringin_user(lightning_address: str, request: Request):
     secret = os.environ["BRINGIN_SECRET"]
 
     expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body)
+    
+    # Log the generated HMAC and the raw data
+    logger.info(f"Generated HMAC: {expected_signature}")
+    logger.info(f"Received HMAC: {signature}")
 
     if not signature == expected_signature:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
