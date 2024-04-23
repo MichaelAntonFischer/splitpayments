@@ -29,7 +29,9 @@ def generate_hmac_authorization(secret, method, path, body, timestamp=None):
     # Use the provided timestamp or generate a new one if not provided
     if timestamp is None:
         timestamp = str(int(time.time() * 1000))
-    
+    else:
+        timestamp = str(timestamp)  # Ensure timestamp is a string even if it's provided as an integer
+
     body_string = json.dumps(body, separators=(',', ':')) if body else '{}'
     md5_hasher = hashlib.md5()
     md5_hasher.update(body_string.encode())
