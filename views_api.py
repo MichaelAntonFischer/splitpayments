@@ -31,6 +31,7 @@ async def api_execute_split(wallet_id: str, amount: int) -> None:
     result = await execute_split(wallet_id, amount)
     return result
 
+@splitpayments_ext.post("/api/v1/add_bringin_user", status_code=HTTP_200_OK)
 async def add_bringin_user(lightning_address: str, request: Request):
     body = await request.json()
     signature = request.headers.get("Authorization")
