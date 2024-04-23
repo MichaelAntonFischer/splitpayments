@@ -63,18 +63,27 @@ async def add_bringin_user(lightning_address: str, request: Request):
     wallet_name = "Offramp"
 
     try:
+        logger.info("Creating Bringin user")
         user_data = await create_bringin_user(admin_id, user_name, wallet_name)
         user_id = user_data["id"]
         invoice_key = user_data["wallets"][0]["inkey"]
         wallet_id = user_data["wallets"][0]["id"]
+        logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Wallet ID: {wallet_id}")
 
+        logger.info("Activating extensions for the user")
         await activate_extensions(user_id, ["splitpayments", "lnurlp"])
-        lnurl = await create_lnurlp_link(lightning_address)
+        logger.info("Extensions activated")
 
+        logger.info("Creating LNURLp link")
+        lnurl = await create_lnurlp_link(lightning_address)
+        logger.info(f"LNURLp link created: {lnurl}")
+
+        logger.info("Setting targets for the wallet")
         target = Target(wallet=wallet_id, wallet_target=lightning_address, percent=100, alias="Offramp Order")
         await set_targets(wallet_id, [target])
+        logger.info("Targets set")
 
-        return { "lnurl": lnurl}
+        return {"lnurl": lnurl}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
