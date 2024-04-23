@@ -6,6 +6,7 @@ import time
 import json
 import hmac
 import hashlib
+from loguru import logger
 
 API_BASE_URL = 'https://api.bringin.xyz'
 BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
@@ -18,7 +19,7 @@ async def offramp(lightning_address, amount_sats):
     user_api_key = await fetch_users_api_key(os.environ['BRINGIN_KEY'], os.environ['BRINGIN_SECRET'], lightning_address)
     if user_api_key:
         result = await create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address)
-        print(f"Create offramp order returned: {result}")
+        logger.info(f"Create offramp order returned: {result}")
 
 
 # Function to generate HMAC authorization header
