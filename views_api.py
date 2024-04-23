@@ -38,27 +38,18 @@ async def add_bringin_user(lightning_address: str, request: Request):
     signature = request.headers.get("Authorization")
     secret = os.environ["BRINGIN_SECRET"]
 
+    # Include lightning_address in the body for HMAC generation
+    body['lightning_address'] = lightning_address  # Ensure this key matches client's key
+
     # Extract timestamp from the client's HMAC and ensure it's a string
     client_timestamp_str = signature.split()[1].split(':')[0]
 
-    # Use the full path from the request for HMAC generation
-    full_external_path = "/splitpayments" + request.url.path
+    # Serialize body with consistent order
+    body_string = json.dumps(body, separators=(',', ':'), sort_keys=True)
+    raw_data = client_timestamp_str + request.method + request.url.path + body_string
 
-    # Ensure the path is not duplicated
-    if full_external_path.startswith("/splitpayments/splitpayments"):
-        full_external_path = full_external_path.replace("/splitpayments/splitpayments", "/splitpayments")
-
-    # Check if the timestamp is within a 5-second window (5000 milliseconds)
-    server_timestamp = int(time.time() * 1000)
-    if abs(server_timestamp - int(client_timestamp_str)) > 5000:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Timestamp is not valid")
-
-    # Prepare the raw data for logging and HMAC generation
-    body_string = json.dumps(body, separators=(',', ':'))
-    raw_data = client_timestamp_str + request.method + full_external_path + body_string
-
-    # Generate expected HMAC signature using the client's timestamp and the full external path
-    expected_signature = generate_hmac_authorization(secret, request.method, full_external_path, body, client_timestamp_str)
+    # Generate expected HMAC signature using the client's timestamp and the full request path
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp_str)
 
     # Log the raw data and the generated HMAC
     logger.info(f"Raw Data for HMAC: {raw_data}")
