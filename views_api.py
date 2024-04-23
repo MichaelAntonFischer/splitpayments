@@ -1,5 +1,6 @@
 import os
 import time
+import json 
 
 from http import HTTPStatus
 from typing import List
@@ -37,21 +38,25 @@ async def add_bringin_user(lightning_address: str, request: Request):
     signature = request.headers.get("Authorization")
     secret = os.environ["BRINGIN_SECRET"]
 
-    # Extract timestamp from the client's HMAC
-    client_timestamp = int(signature.split()[1].split(':')[0])
-    server_timestamp = int(time.time() * 1000)
+    # Extract timestamp from the client's HMAC and ensure it's a string
+    client_timestamp_str = signature.split()[1].split(':')[0]
 
+    # Use the full path from the request for HMAC generation
     full_external_path = "/splitpayments" + request.url.path
 
     # Check if the timestamp is within a 5-second window (5000 milliseconds)
-    if abs(server_timestamp - client_timestamp) > 5000:
+    server_timestamp = int(time.time() * 1000)
+    if abs(server_timestamp - int(client_timestamp_str)) > 5000:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Timestamp is not valid")
 
-    # Generate expected HMAC signature
-    raw_data = client_timestamp + request.method + full_external_path + body
-    expected_signature = generate_hmac_authorization(secret, request.method, full_external_path, body, client_timestamp)
+    # Prepare the raw data for logging and HMAC generation
+    body_string = json.dumps(body, separators=(',', ':'))
+    raw_data = client_timestamp_str + request.method + full_external_path + body_string
 
-    # Log the generated HMAC and the raw data
+    # Generate expected HMAC signature using the client's timestamp and the full external path
+    expected_signature = generate_hmac_authorization(secret, request.method, full_external_path, body, client_timestamp_str)
+
+    # Log the raw data and the generated HMAC
     logger.info(f"Raw Data for HMAC: {raw_data}")
     logger.info(f"Generated HMAC: {expected_signature}")
     logger.info(f"Received HMAC: {signature}")
