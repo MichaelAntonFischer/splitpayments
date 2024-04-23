@@ -51,8 +51,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
     # Generate expected HMAC signature using the client's timestamp and the full request path
     expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp_str)
 
-    # Log the raw data and the generated HMAC
-    logger.info(f"Raw Data for HMAC: {raw_data}")
+    # Log the received and the generated HMAC
     logger.info(f"Generated HMAC: {expected_signature}")
     logger.info(f"Received HMAC: {signature}")
 

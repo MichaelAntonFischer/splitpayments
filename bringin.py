@@ -38,6 +38,7 @@ def generate_hmac_authorization(secret, method, path, body, timestamp=None):
     md5_hasher.update(body_string.encode())
     request_content_hex_string = md5_hasher.hexdigest()
     signature_raw_data = timestamp + method + path + request_content_hex_string
+    logger.info(f"Raw Data for HMAC: {signature_raw_data}")
     signature = hmac.new(secret.encode(), signature_raw_data.encode(), hashlib.sha256).hexdigest()
     return f"HMAC {timestamp}:{signature}"
 
