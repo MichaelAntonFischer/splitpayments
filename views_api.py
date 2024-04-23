@@ -75,8 +75,14 @@ async def add_bringin_user(lightning_address: str, request: Request):
         logger.info("Extensions activated")
 
         logger.info("Creating LNURLp link")
-        lnurl = await create_lnurlp_link(lightning_address)
-        logger.info(f"LNURLp link created: {lnurl}")
+        try:
+            lnurl = await create_lnurlp_link(lightning_address)
+            logger.info(f"LNURLp link created: {lnurl}")
+        except Exception as e:
+            if str(e) == "Username already exists. Try a different one.":
+                raise HTTPException(status_code=409, detail=str(e))
+            else:
+                raise
 
         logger.info("Setting targets for the wallet")
         target = Target(wallet=lightning_address, percent=100, alias="Offramp Order")
