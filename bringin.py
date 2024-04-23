@@ -22,6 +22,7 @@ async def offramp(lightning_address, amount_sats):
     if user_api_key:
         result = await create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address)
         logger.info(f"Create offramp order returned: {result}")
+        return result
 
 
 # Function to generate HMAC authorization header
