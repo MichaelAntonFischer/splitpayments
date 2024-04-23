@@ -41,12 +41,14 @@ async def add_bringin_user(lightning_address: str, request: Request):
     client_timestamp = int(signature.split()[1].split(':')[0])
     server_timestamp = int(time.time() * 1000)
 
+    full_external_path = "/splitpayments" + request.url.path
+
     # Check if the timestamp is within a 5-second window (5000 milliseconds)
     if abs(server_timestamp - client_timestamp) > 5000:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Timestamp is not valid")
 
     # Generate expected HMAC signature
-    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp)
+    expected_signature = generate_hmac_authorization(secret, request.method, full_external_path, body, client_timestamp)
 
     # Log the generated HMAC and the raw data
     logger.info(f"Generated HMAC: {expected_signature}")
