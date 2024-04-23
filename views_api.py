@@ -46,7 +46,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Timestamp is not valid")
 
     # Generate expected HMAC signature
-    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body)
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp)
 
     # Log the generated HMAC and the raw data
     logger.info(f"Generated HMAC: {expected_signature}")

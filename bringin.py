@@ -25,28 +25,18 @@ async def offramp(lightning_address, amount_sats):
 
 
 # Function to generate HMAC authorization header
-def generate_hmac_authorization(api_secret, http_method, path, body):
-    # 1. Fetch the current UNIX timestamp in milliseconds
-    current_time = str(int(time.time() * 1000))
+def generate_hmac_authorization(secret, method, path, body, timestamp=None):
+    # Use the provided timestamp or generate a new one if not provided
+    if timestamp is None:
+        timestamp = str(int(time.time() * 1000))
     
-    # 2. Stringify the body of your request
     body_string = json.dumps(body, separators=(',', ':')) if body else '{}'
-    
-    # 3. Calculate the hex encoded MD5 digest of your request body
     md5_hasher = hashlib.md5()
     md5_hasher.update(body_string.encode())
     request_content_hex_string = md5_hasher.hexdigest()
-    
-    # 4. Concatenate the UNIX timestamp with the request verb, path, and the requestContentHexString
-    signature_raw_data = current_time + http_method + path + request_content_hex_string
-    
-    # 5. Use your API Secret to create a SHA256 HMAC digest in hex
-    signature = hmac.new(api_secret.encode(), signature_raw_data.encode(), hashlib.sha256).hexdigest()
-    
-    # 6. Finally, create your authorization header
-    authorization_header = f"HMAC {current_time}:{signature}"
-    
-    return authorization_header
+    signature_raw_data = timestamp + method + path + request_content_hex_string
+    signature = hmac.new(secret.encode(), signature_raw_data.encode(), hashlib.sha256).hexdigest()
+    return f"HMAC {timestamp}:{signature}"
 
 # Function to fetch the host's public IP address
 async def fetch_public_ip():
