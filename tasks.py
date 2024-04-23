@@ -15,6 +15,7 @@ from lnbits.tasks import register_invoice_listener
 
 from .crud import get_targets
 
+BRINGIN_DOMAINS = ["bringin.xyz", "bringin.opago-pay.com"]
 
 async def wait_for_paid_invoices():
     invoice_queue = asyncio.Queue()
@@ -53,7 +54,11 @@ async def on_invoice_paid(payment: Payment) -> None:
                 f"Split payment: {target.percent}% for {target.alias or target.wallet}"
             )
 
-            if target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
+            if any(domain in target.wallet for domain in BRINGIN_DOMAINS):
+                # Use offramp function for BRINGIN_DOMAINS
+                amount_sats = int(amount_msat / 1000)
+                payment_request = await offramp(target.wallet, amount_sats)
+            elif target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
                 safe_amount_msat = amount_msat - fee_reserve(amount_msat)
                 payment_request = await get_lnurl_invoice(
                     target.wallet, payment.wallet_id, safe_amount_msat, memo
