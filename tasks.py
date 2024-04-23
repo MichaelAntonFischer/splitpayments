@@ -110,7 +110,11 @@ async def execute_split(wallet_id, amount):
                 f"{target.alias or target.wallet}"
             )
 
-            if target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
+            if any(domain in target.wallet for domain in BRINGIN_DOMAINS):
+                # Use offramp function for BRINGIN_DOMAINS
+                amount_sats = int(amount_msat / 1000)
+                payment_request = await offramp(target.wallet, amount_sats)
+            elif target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
                 safe_amount_msat = amount_msat - fee_reserve(amount_msat)
                 payment_request = await get_lnurl_invoice(
                     target.wallet, wallet_id, safe_amount_msat, memo
