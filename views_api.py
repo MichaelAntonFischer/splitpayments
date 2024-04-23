@@ -1,3 +1,5 @@
+import os
+
 from http import HTTPStatus
 from typing import List
 
@@ -12,7 +14,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-
+from .bringin import generate_hmac_authorization
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -26,6 +28,23 @@ async def api_targets_get(
 async def api_execute_split(wallet_id: str, amount: int) -> None:
     result = await execute_split(wallet_id, amount)
     return result
+
+@splitpayments_ext.post("/api/v1/add_bringin_user")
+async def add_bringin_user(lightning_address: str, ip_address: str, authorization: str = Depends(generate_hmac_authorization)):
+    # Check if the authorization is valid
+    if authorization != generate_hmac_authorization(os.environ['BRINGIN_SECRET'], "POST", "/api/v1/add_bringin_user", {"lightningAddress": lightning_address, "ipAddress": ip_address}):
+        raise HTTPException(status_code=403, detail="Invalid authorization")
+
+    else:
+        raise HTTPException(status_code=500, detail="Failed to add user")
+
+@splitpayments_ext.post("/api/v1/update_bringin_user")
+async def update_bringin_user(lightning_address: str, ip_address: str, authorization: str = Depends(generate_hmac_authorization)):
+    # Check if the authorization is valid
+    if authorization != generate_hmac_authorization(os.environ['BRINGIN_SECRET'], "POST", "/api/v1/update_bringin_user", {"lightningAddress": lightning_address, "ipAddress": ip_address}):
+        raise HTTPException(status_code=403, detail="Invalid authorization")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update user")
 
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)
 async def api_targets_set(
