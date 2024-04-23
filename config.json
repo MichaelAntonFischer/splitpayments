@@ -1,7 +1,7 @@
 {
   "name": "Split Payments",
-  "short_description": "Split incoming payments across wallets",
-  "tile": "/splitpayments/static/image/split-payments.png",
-  "contributors": ["fiatjaf", "cryptograffiti"],
+  "short_description": "Offramp to bringin.xyz via LNaddress",
+  "tile": "https://bringin.xyz/wp-content/uploads/2023/11/Frame-7483-1.png",
+  "contributors": ["fiatjaf", "cryptograffiti", "OPAGO"],
   "min_lnbits_version": "0.11.0"
 }
