@@ -7,6 +7,8 @@ import json
 import hmac
 import hashlib
 from loguru import logger
+from fastapi import HTTPException
+from typing import List
 
 API_BASE_URL = 'https://api.bringin.xyz'
 BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
@@ -111,5 +113,77 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
         else:
             print("Failed to create offramp order. Error code:", response.status_code)
             return response.status_code  # Return the error code
+
+async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str):
+    url = "https://bringin.opago-pay.com/usermanager/api/v1/users"
+    headers = {
+        "X-Api-Key": os.environ['OPAGO_KEY'],
+        "Content-type": "application/json"
+    }
+    data = {
+        "admin_id": admin_id,
+        "user_name": user_name,
+        "wallet_name": wallet_name
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            response_data = response.json()
+            return response_data
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+async def activate_extensions(user_id: str, extensions: List[str]):
+    url = "https://bringin.opago-pay.com/usermanager/api/v1/extensions"
+    headers = {
+        "X-Api-Key": os.environ['OPAGO_KEY'],
+        "Content-type": "application/json"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            for extension in extensions:
+                params = {
+                    "extension": extension,
+                    "userid": user_id,
+                    "active": "true"
+                }
+                response = await client.post(url, headers=headers, params=params)
+                response.raise_for_status()
+            return {"extensions": "updated"}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def create_lnurlp_link(lightning_address: str):
+    url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
+    headers = {
+        "X-Api-Key": os.environ['OPAGO_KEY'],
+        "Content-type": "application/json"
+    }
+    username = lightning_address.split("@")[0]  # Extract the username from the lightning address
+    data = {
+        "description": "Offramp via Bringin",
+        "max": int(os.environ['BRINGIN_MAX']),
+        "min": int(os.environ['BRINGIN_MIN']),
+        "comment_chars": 210,
+        "username": username
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            response_data = response.json()
+            return response_data["lnurl"]
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -3,9 +3,10 @@ import os
 from http import HTTPStatus
 from typing import List
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from loguru import logger
 from starlette.exceptions import HTTPException
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_200_OK
 
 from lnbits.core.crud import get_wallet, get_wallet_for_key
 from lnbits.decorators import WalletTypeInfo, check_admin, require_admin_key
@@ -14,7 +15,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import generate_hmac_authorization
+from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -29,22 +30,36 @@ async def api_execute_split(wallet_id: str, amount: int) -> None:
     result = await execute_split(wallet_id, amount)
     return result
 
-@splitpayments_ext.post("/api/v1/add_bringin_user")
-async def add_bringin_user(lightning_address: str, ip_address: str, authorization: str = Depends(generate_hmac_authorization)):
-    # Check if the authorization is valid
-    if authorization != generate_hmac_authorization(os.environ['BRINGIN_SECRET'], "POST", "/api/v1/add_bringin_user", {"lightningAddress": lightning_address, "ipAddress": ip_address}):
-        raise HTTPException(status_code=403, detail="Invalid authorization")
+@splitpayments_ext.post("/api/v1/add_bringin_user", status_code=HTTP_200_OK)
+async def add_bringin_user(lightning_address: str, request: Request):
+    body = await request.json()
+    signature = request.headers.get("Authorization")
+    secret = os.environ["BRINGIN_SECRET"]
 
-    else:
-        raise HTTPException(status_code=500, detail="Failed to add user")
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body)
 
-@splitpayments_ext.post("/api/v1/update_bringin_user")
-async def update_bringin_user(lightning_address: str, ip_address: str, authorization: str = Depends(generate_hmac_authorization)):
-    # Check if the authorization is valid
-    if authorization != generate_hmac_authorization(os.environ['BRINGIN_SECRET'], "POST", "/api/v1/update_bringin_user", {"lightningAddress": lightning_address, "ipAddress": ip_address}):
-        raise HTTPException(status_code=403, detail="Invalid authorization")
-    else:
-        raise HTTPException(status_code=500, detail="Failed to update user")
+    if not signature == expected_signature:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+
+    admin_id = os.environ['OPAGO_ID']
+    user_name = lightning_address.split("@")[0]
+    wallet_name = "Offramp"
+
+    try:
+        user_data = await create_bringin_user(admin_id, user_name, wallet_name)
+        user_id = user_data["id"]
+        invoice_key = user_data["wallets"][0]["inkey"]
+        wallet_id = user_data["wallets"][0]["id"]
+
+        await activate_extensions(user_id, ["splitpayments", "lnurlp"])
+        lnurl = await create_lnurlp_link(lightning_address, "Offramp via Bringin", 1000)
+
+        target = Target(wallet=wallet_id, wallet_target=lightning_address, percent=100, alias="User Split")
+        await set_targets(wallet_id, [target])
+
+        return {"user_id": user_id, "invoice_key": invoice_key, "wallet_id": wallet_id, "lnurl": lnurl}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)
 async def api_targets_set(
