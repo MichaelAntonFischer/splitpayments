@@ -79,7 +79,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         logger.info(f"LNURLp link created: {lnurl}")
 
         logger.info("Setting targets for the wallet")
-        target = Target(wallet=wallet_id, wallet_target=lightning_address, percent=100, alias="Offramp Order")
+        target = Target(wallet=lightning_address, percent=100, alias="Offramp Order")
         await set_targets(wallet_id, [target])
         logger.info("Targets set")
 
