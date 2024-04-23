@@ -44,6 +44,10 @@ async def add_bringin_user(lightning_address: str, request: Request):
     # Use the full path from the request for HMAC generation
     full_external_path = "/splitpayments" + request.url.path
 
+    # Ensure the path is not duplicated
+    if full_external_path.startswith("/splitpayments/splitpayments"):
+        full_external_path = full_external_path.replace("/splitpayments/splitpayments", "/splitpayments")
+
     # Check if the timestamp is within a 5-second window (5000 milliseconds)
     server_timestamp = int(time.time() * 1000)
     if abs(server_timestamp - int(client_timestamp_str)) > 5000:
