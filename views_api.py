@@ -67,6 +67,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         user_data = await create_bringin_user(admin_id, user_name, wallet_name, lightning_address)
         user_id = user_data["id"]
         invoice_key = user_data["wallets"][0]["inkey"]
+        admin_key = user_data["wallets"][0]["adminkey"]
         wallet_id = user_data["wallets"][0]["id"]
 
         logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
