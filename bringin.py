@@ -156,17 +156,24 @@ async def activate_extensions(user_id: str, extensions: List[str]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def create_lnurlp_link(lightning_address: str):
+async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
     headers = {
-        "X-Api-Key": os.environ['OPAGO_KEY'],
+        "X-Api-Key": admin_key,
         "Content-type": "application/json"
     }
     username = lightning_address.split("@")[0]  # Extract the username from the lightning address
+    
+    # Populate bringin_max and min from the env variables if not provided
+    if bringin_max is None:
+        bringin_max = int(os.environ.get("BRINGIN_MAX", 0))
+    if bringin_min is None:
+        bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
+    
     data = {
         "description": "Offramp via Bringin",
-        "max": int(os.environ['BRINGIN_MAX']),
-        "min": int(os.environ['BRINGIN_MIN']),
+        "max": bringin_max,
+        "min": bringin_min,
         "comment_chars": 210,
         "username": username
     }
@@ -191,8 +198,7 @@ async def delete_user(user_id: str):
         if response.status_code != 204:
             raise Exception(f"Failed to delete user: {response.text}")
         
-async def delete_lnurlp_link(pay_id: str):
-    admin_key = os.environ["OPAGO_KEY"]
+async def delete_lnurlp_link(pay_id: str, admin_key: str):
     headers = {"X-Api-Key": admin_key}
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:

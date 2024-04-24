@@ -68,6 +68,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         user_id = user_data["id"]
         invoice_key = user_data["wallets"][0]["inkey"]
         wallet_id = user_data["wallets"][0]["id"]
+        admin_key = user_data["wallets"][0]["adminkey"]  # Get the admin key of the newly created user
         logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Wallet ID: {wallet_id}")
 
         logger.info("Activating extensions for the user")
@@ -77,7 +78,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         logger.info("Creating LNURLp link")
         lnurl = None
         try:
-            lnurl = await create_lnurlp_link(lightning_address)
+            lnurl = await create_lnurlp_link(lightning_address, admin_key)  
             logger.info(f"LNURLp link created: {lnurl}")
         except Exception as e:
             if "Username already exists" in str(e):
@@ -88,10 +89,34 @@ async def add_bringin_user(lightning_address: str, request: Request):
 
         logger.info("Setting targets for the wallet")
         target = Target(wallet=lightning_address, percent=100, alias="Offramp Order")
-        await set_targets(wallet_id, [target])
+        await set_targets(wallet_id, [target])  
         logger.info("Targets set")
 
         return {"lnurl": lnurl}
+
+    except HTTPException as e:
+        raise e
+
+    except Exception as e:
+        logger.error(f"Error during setup: {str(e)}")
+
+        # Cleanup: Delete the created user and LNURLp link
+        try:
+            if lnurl:
+                pay_id = lnurl.split("/")[-1]  # Extract the pay_id from the LNURLp link
+                logger.info(f"Deleting LNURLp link: {pay_id}")
+                await delete_lnurlp_link(pay_id, admin_key)  # Use the admin key of the new user
+                logger.info("LNURLp link deleted")
+            
+            if user_id:
+                logger.info(f"Deleting user: {user_id}")
+                await delete_user(user_id)
+                logger.info("User deleted")
+
+        except Exception as cleanup_error:
+            logger.error(f"Error during cleanup: {str(cleanup_error)}")
+
+        raise HTTPException(status_code=500, detail=str(e))
 
     except HTTPException as e:
         raise e
