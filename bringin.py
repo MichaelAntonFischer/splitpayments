@@ -172,7 +172,7 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
     data = {
         "description": "Offramp via Bringin",
         "max": bringin_max,
-        "min": bringin_min,
+        "min": 1,
         "comment_chars": 210,
         "username": username
     }
