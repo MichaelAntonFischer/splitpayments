@@ -81,10 +81,10 @@ async def add_bringin_user(lightning_address: str, request: Request):
         try:
             lnurl = await create_lnurlp_link(lightning_address, admin_key)  
             logger.info(f"LNURLp link created: {lnurl}")
-        except Exception as e:
-            if "Username already exists" in str(e):
+        except HTTPException as e:
+            if e.status_code == 409:
                 logger.warning(f"Username already exists: {lightning_address}")
-                raise HTTPException(status_code=409, detail=str(e))
+                raise HTTPException(status_code=409, detail=str(e.detail))
             else:
                 raise
 
@@ -113,30 +113,6 @@ async def add_bringin_user(lightning_address: str, request: Request):
                 logger.info(f"Deleting user: {user_id}")
                 await delete_user(user_id)
                 logger.info("User deleted")
-
-        except Exception as cleanup_error:
-            logger.error(f"Error during cleanup: {str(cleanup_error)}")
-
-        raise HTTPException(status_code=500, detail=str(e))
-
-    except HTTPException as e:
-        raise e
-
-    except Exception as e:
-        logger.error(f"Error during setup: {str(e)}")
-
-        # Cleanup: Delete the created user and LNURLp link
-        try:
-            if user_id:
-                logger.info(f"Deleting user: {user_id}")
-                await delete_user(user_id)
-                logger.info("User deleted")
-
-            if lnurl:
-                pay_id = lnurl.split("/")[-1]  # Extract the pay_id from the LNURLp link
-                logger.info(f"Deleting LNURLp link: {pay_id}")
-                await delete_lnurlp_link(pay_id)
-                logger.info("LNURLp link deleted")
 
         except Exception as cleanup_error:
             logger.error(f"Error during cleanup: {str(cleanup_error)}")
