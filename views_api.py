@@ -17,7 +17,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization
+from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization, delete_user, delete_lnurlp_link
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -64,7 +64,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
 
     try:
         logger.info("Creating Bringin user")
-        user_data = await create_bringin_user(admin_id, user_name, wallet_name)
+        user_data = await create_bringin_user(admin_id, user_name, wallet_name, lightning_address)
         user_id = user_data["id"]
         invoice_key = user_data["wallets"][0]["inkey"]
         wallet_id = user_data["wallets"][0]["id"]
@@ -75,11 +75,13 @@ async def add_bringin_user(lightning_address: str, request: Request):
         logger.info("Extensions activated")
 
         logger.info("Creating LNURLp link")
+        lnurl = None
         try:
             lnurl = await create_lnurlp_link(lightning_address)
             logger.info(f"LNURLp link created: {lnurl}")
         except Exception as e:
-            if str(e) == "Username already exists. Try a different one.":
+            if "Username already exists" in str(e):
+                logger.warning(f"Username already exists: {lightning_address}")
                 raise HTTPException(status_code=409, detail=str(e))
             else:
                 raise
@@ -90,7 +92,27 @@ async def add_bringin_user(lightning_address: str, request: Request):
         logger.info("Targets set")
 
         return {"lnurl": lnurl}
+
+    except HTTPException as e:
+        raise e
+
     except Exception as e:
+        logger.error(f"Error during setup: {str(e)}")
+
+        # Cleanup: Delete the created user and LNURLp link
+        try:
+            if user_id:
+                logger.info(f"Deleting user: {user_id}")
+                await delete_user(user_id)
+
+            if lnurl:
+                pay_id = lnurl.split("/")[-1]  # Extract the pay_id from the LNURLp link
+                logger.info(f"Deleting LNURLp link: {pay_id}")
+                await delete_lnurlp_link(pay_id)
+
+        except Exception as cleanup_error:
+            logger.error(f"Error during cleanup: {str(cleanup_error)}")
+
         raise HTTPException(status_code=500, detail=str(e))
 
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)

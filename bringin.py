@@ -109,7 +109,7 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
             print("Failed to create offramp order. Error code:", response.status_code, "Response:", response.text)
             return response.status_code  # Return the error code
 
-async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str):
+async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, lnaddress: str):
     url = "https://bringin.opago-pay.com/usermanager/api/v1/users"
     headers = {
         "X-Api-Key": os.environ['OPAGO_KEY'],
@@ -118,7 +118,8 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str):
     data = {
         "admin_id": admin_id,
         "user_name": user_name,
-        "wallet_name": wallet_name
+        "wallet_name": wallet_name,
+        "email": lnaddress
     }
 
     try:
@@ -180,5 +181,23 @@ async def create_lnurlp_link(lightning_address: str):
         raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+async def delete_user(user_id: str):
+    admin_key = os.environ["OPAGO_ADMIN_KEY"]
+    headers = {"X-Api-Key": admin_key}
+    url = f"https://bringin.opago-pay.com/usermanager/api/v1/users/{user_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(url, headers=headers)
+        if response.status_code != 204:
+            raise Exception(f"Failed to delete user: {response.text}")
+        
+async def delete_lnurlp_link(pay_id: str):
+    admin_key = os.environ["OPAGO_ADMIN_KEY"]
+    headers = {"X-Api-Key": admin_key}
+    url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(url, headers=headers)
+        if response.status_code != 204:
+            raise Exception(f"Failed to delete LNURLp link: {response.text}")
 
 
