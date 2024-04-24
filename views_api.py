@@ -104,11 +104,13 @@ async def add_bringin_user(lightning_address: str, request: Request):
             if user_id:
                 logger.info(f"Deleting user: {user_id}")
                 await delete_user(user_id)
+                logger.info("User deleted")
 
             if lnurl:
                 pay_id = lnurl.split("/")[-1]  # Extract the pay_id from the LNURLp link
                 logger.info(f"Deleting LNURLp link: {pay_id}")
                 await delete_lnurlp_link(pay_id)
+                logger.info("LNURLp link deleted")
 
         except Exception as cleanup_error:
             logger.error(f"Error during cleanup: {str(cleanup_error)}")

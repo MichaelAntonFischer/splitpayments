@@ -183,7 +183,7 @@ async def create_lnurlp_link(lightning_address: str):
         raise HTTPException(status_code=500, detail=str(e))
     
 async def delete_user(user_id: str):
-    admin_key = os.environ["OPAGO_ADMIN_KEY"]
+    admin_key = os.environ["OPAGO_KEY"]
     headers = {"X-Api-Key": admin_key}
     url = f"https://bringin.opago-pay.com/usermanager/api/v1/users/{user_id}"
     async with httpx.AsyncClient() as client:
@@ -192,7 +192,7 @@ async def delete_user(user_id: str):
             raise Exception(f"Failed to delete user: {response.text}")
         
 async def delete_lnurlp_link(pay_id: str):
-    admin_key = os.environ["OPAGO_ADMIN_KEY"]
+    admin_key = os.environ["OPAGO_KEY"]
     headers = {"X-Api-Key": admin_key}
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:
