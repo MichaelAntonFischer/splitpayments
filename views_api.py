@@ -81,10 +81,10 @@ async def add_bringin_user(lightning_address: str, request: Request):
         try:
             lnurl = await create_lnurlp_link(lightning_address, admin_key)  
             logger.info(f"LNURLp link created: {lnurl}")
-        except HTTPException as e:
-            if e.status_code == 409:
+        except Exception as e:
+            if "Username already exists" in str(e):
                 logger.warning(f"Username already exists: {lightning_address}")
-                raise HTTPException(status_code=409, detail=str(e.detail))
+                raise HTTPException(status_code=409, detail="Username already exists. Try a different one.")
             else:
                 raise
 
