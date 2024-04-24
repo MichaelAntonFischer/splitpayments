@@ -37,21 +37,11 @@ async def add_bringin_user(lightning_address: str, request: Request):
     body = await request.json()
     signature = request.headers.get("Authorization")
     secret = os.environ["BRINGIN_SECRET"]
-
-    # Include lightning_address in the body for HMAC generation
-    body['lightning_address'] = lightning_address  # Ensure this key matches client's key
-
-    # Extract timestamp from the client's HMAC and ensure it's a string
+    body['lightning_address'] = lightning_address
     client_timestamp_str = signature.split()[1].split(':')[0]
-
-    # Serialize body with consistent order
     body_string = json.dumps(body, separators=(',', ':'), sort_keys=True)
-    raw_data = client_timestamp_str + request.method + request.url.path + body_string
-
-    # Generate expected HMAC signature using the client's timestamp and the full request path
     expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp_str)
 
-    # Log the received and the generated HMAC
     logger.info(f"Generated HMAC: {expected_signature}")
     logger.info(f"Received HMAC: {signature}")
 
@@ -61,6 +51,8 @@ async def add_bringin_user(lightning_address: str, request: Request):
     admin_id = os.environ['OPAGO_ID']
     user_name = lightning_address.split("@")[0]
     wallet_name = "Offramp"
+    user_id = None
+    lnurl = None
 
     try:
         logger.info("Creating Bringin user")
@@ -71,22 +63,13 @@ async def add_bringin_user(lightning_address: str, request: Request):
         wallet_id = user_data["wallets"][0]["id"]
 
         logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
-
         logger.info("Activating extensions for the user")
         await activate_extensions(user_id, ["splitpayments", "lnurlp"])
         logger.info("Extensions activated")
 
         logger.info("Creating LNURLp link")
-        lnurl = None
-        try:
-            lnurl = await create_lnurlp_link(lightning_address, admin_key)  
-            logger.info(f"LNURLp link created: {lnurl}")
-        except Exception as e:
-            if "Username already exists" in str(e):
-                logger.warning(f"Username already exists: {lightning_address}")
-                raise HTTPException(status_code=409, detail="Username already exists. Try a different one.")
-            else:
-                raise
+        lnurl = await create_lnurlp_link(lightning_address, admin_key)  
+        logger.info(f"LNURLp link created: {lnurl}")
 
         logger.info("Setting targets for the wallet")
         target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
@@ -100,24 +83,26 @@ async def add_bringin_user(lightning_address: str, request: Request):
 
     except Exception as e:
         logger.error(f"Error during setup: {str(e)}")
-
-        # Cleanup: Delete the created user and LNURLp link
-        try:
-            if lnurl:
-                pay_id = lnurl.split("/")[-1]  # Extract the pay_id from the LNURLp link
-                logger.info(f"Deleting LNURLp link: {pay_id}")
-                await delete_lnurlp_link(pay_id, admin_key)  # Use the admin key of the new user
-                logger.info("LNURLp link deleted")
-            
-            if user_id:
-                logger.info(f"Deleting user: {user_id}")
-                await delete_user(user_id)
-                logger.info("User deleted")
-
-        except Exception as cleanup_error:
-            logger.error(f"Error during cleanup: {str(cleanup_error)}")
-
         raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        if lnurl or user_id:
+            await cleanup_resources(lnurl, user_id, admin_key)
+
+async def cleanup_resources(lnurl, user_id, admin_key):
+    try:
+        if lnurl:
+            pay_id = lnurl.split("/")[-1]
+            logger.info(f"Deleting LNURLp link: {pay_id}")
+            await delete_lnurlp_link(pay_id, admin_key)
+            logger.info("LNURLp link deleted")
+        
+        if user_id:
+            logger.info(f"Deleting user: {user_id}")
+            await delete_user(user_id)
+            logger.info("User deleted")
+    except Exception as cleanup_error:
+        logger.error(f"Error during cleanup: {str(cleanup_error)}")
 
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)
 async def api_targets_set(
