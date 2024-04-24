@@ -183,11 +183,14 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
             response.raise_for_status()
             response_data = response.json()
             return response_data["lnurl"]
-    except Exception as e:
-        if "Username already exists" in str(e):
-            raise HTTPException(status_code=409, detail="Username already exists. Try a different one.")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 409:
+            detail = e.response.json().get('detail', 'Username already exists. Try a different one.')
+            raise HTTPException(status_code=409, detail=detail)
         else:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
 async def delete_user(user_id: str):
     admin_key = os.environ["OPAGO_KEY"]
