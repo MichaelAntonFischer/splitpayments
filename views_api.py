@@ -68,7 +68,7 @@ async def add_bringin_user(lightning_address: str, request: Request):
         user_id = user_data["id"]
         invoice_key = user_data["wallets"][0]["inkey"]
         wallet_id = user_data["wallets"][0]["id"]
-        admin_key = user_data["wallets"][0]["adminkey"]  # Get the admin key of the newly created user
+
         logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
 
         logger.info("Activating extensions for the user")
@@ -88,8 +88,8 @@ async def add_bringin_user(lightning_address: str, request: Request):
                 raise
 
         logger.info("Setting targets for the wallet")
-        target = Target(wallet=lightning_address, percent=100, alias="Offramp Order")
-        await set_targets(wallet_id, [target])  
+        target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
+        await set_targets(wallet_id, [target])
         logger.info("Targets set")
 
         return {"lnurl": lnurl}
