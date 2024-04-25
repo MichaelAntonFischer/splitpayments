@@ -305,14 +305,14 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
 
             return {"lnurl": lnurl}
 
-        except HTTPException as e:
-            raise e
-
         except Exception as e:
             logger.error(f"Error during setup: {str(e)}")
             if lnurl or user_id:
                 await cleanup_resources(lnurl, user_id, admin_key)
-            raise HTTPException(status_code=500, detail=str(e))
+            if isinstance(e, HTTPException):
+                raise e
+            else:
+                raise HTTPException(status_code=500, detail=str(e))
     
 async def update_bringin_user(old_lightning_address: str, new_lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
