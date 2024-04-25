@@ -23,7 +23,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user, send_email
+from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
