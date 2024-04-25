@@ -17,7 +17,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization, delete_user, delete_lnurlp_link
+from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization, delete_user, delete_lnurlp_link, get_bringin_audit_data
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -103,6 +103,29 @@ async def cleanup_resources(lnurl, user_id, admin_key):
             logger.info("User deleted")
     except Exception as cleanup_error:
         logger.error(f"Error during cleanup: {str(cleanup_error)}")
+
+@splitpayments_ext.get("/api/v1/bringin_audit")
+async def bringin_audit(request: Request):
+    signature = request.headers.get("Authorization")
+    secret = os.environ["BRINGIN_SECRET"]
+    admin_key = os.environ["OPAGO_KEY"]
+
+    client_timestamp_str = signature.split()[1].split(':')[0]
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, {}, client_timestamp_str)
+
+    logger.info(f"Generated HMAC: {expected_signature}")
+    logger.info(f"Received HMAC: {signature}")
+
+    if not signature == expected_signature:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+
+    try:
+        audit_data = await get_bringin_audit_data(admin_key)
+        return audit_data
+
+    except Exception as e:
+        logger.error(f"Error during Bringin audit: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)
 async def api_targets_set(

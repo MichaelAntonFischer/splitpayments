@@ -210,3 +210,33 @@ async def delete_lnurlp_link(pay_id: str, admin_key: str):
             raise Exception(f"Failed to delete LNURLp link: {response.text}")
 
 
+async def get_bringin_audit_data(admin_key: str):
+    base_url = "https://bringin.opago-pay.com"
+    headers = {"X-Api-Key": admin_key}
+
+    async with httpx.AsyncClient() as client:
+        users_response = await client.get(f"{base_url}/usermanager/api/v1/users", headers=headers)
+        users_response.raise_for_status()
+        users_data = users_response.json()
+
+        wallets_response = await client.get(f"{base_url}/usermanager/api/v1/wallets", headers=headers)
+        wallets_response.raise_for_status()
+        wallets_data = wallets_response.json()
+
+        audit_data = []
+        for user in users_data:
+            user_wallets = [wallet for wallet in wallets_data if wallet["user"] == user["id"]]
+            for wallet in user_wallets:
+                transactions_response = await client.get(f"{base_url}/usermanager/api/v1/transactions/{wallet['id']}", headers=headers)
+                transactions_response.raise_for_status()
+                transactions_data = transactions_response.json()
+
+                audit_data.append({
+                    "user_id": user["id"],
+                    "user_email": user["email"],
+                    "wallet_id": wallet["id"],
+                    "wallet_balance": wallet["balance"],
+                    "transactions": transactions_data
+                })
+
+        return audit_data
