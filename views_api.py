@@ -274,7 +274,7 @@ async def execute_split_for_all(request: Request):
                 print(f"Error sending email: {str(e)}")
                 return {"message": "Error sending email"}
         else:
-            return {"message": "All wallets below min balance"}
+            return {"message": "All wallets below min balance."}
 
     except Exception as e:
         logger.error(f"Error during execution: {str(e)}")
