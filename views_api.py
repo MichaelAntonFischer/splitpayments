@@ -62,7 +62,7 @@ async def add_bringin_user_endpoint(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @splitpayments_ext.post("/api/v1/update_bringin_user", status_code=HTTP_200_OK)
-async def update_bringin_user(request: Request):
+async def update_bringin_user_endpoint(request: Request):
     body = await request.json()
     old_lightning_address = body.get("old_lightning_address")
     new_lightning_address = body.get("new_lightning_address")
