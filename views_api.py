@@ -1,9 +1,15 @@
 import os
-import time
+import csv
+import io
+import smtplib
 import json 
 
 from http import HTTPStatus
 from typing import List
+
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 from fastapi import Depends, Request
 from loguru import logger
@@ -223,3 +229,72 @@ async def api_stop():
         except Exception as ex:
             logger.warning(ex)
     return {"success": True}
+
+@splitpayments_ext.post("/api/v1/execute_split_for_all", status_code=HTTP_200_OK)
+async def execute_split_for_all(request: Request):
+    admin_key = os.environ["OPAGO_KEY"]
+    BRINGIN_MIN = float(os.environ["BRINGIN_MIN"])
+    BRINGIN_MAX = float(os.environ["BRINGIN_MAX"])
+
+    try:
+        # Run the audit before executing the splits
+        audit_data_before = await get_bringin_audit_data(admin_key, include_transactions=True)
+
+        # Execute the splits
+        for wallet in audit_data_before:
+            balance = wallet['wallet_balance']
+            if balance > BRINGIN_MIN:
+                amount = balance * 0.98  # Subtract 2%
+                if balance > BRINGIN_MAX:
+                    amount = BRINGIN_MAX
+                await execute_split(wallet['wallet_id'], int(amount))
+
+        # Run the audit again after executing the splits
+        audit_data_after = await get_bringin_audit_data(admin_key, include_transactions=True)
+
+        # Compare the balances and create the response
+        response_data = []
+        for wallet_before in audit_data_before:
+            wallet_id = wallet_before['wallet_id']
+            balance_before = wallet_before['wallet_balance']
+
+            # Find the corresponding wallet in the audit data after the splits
+            wallet_after = next((w for w in audit_data_after if w['wallet_id'] == wallet_id), None)
+            balance_after = wallet_after['wallet_balance'] if wallet_after else None
+
+            if balance_after is not None and balance_after > BRINGIN_MIN:
+                response_data.append({
+                    'wallet_id': wallet_id,
+                    'balance_before': balance_before,
+                    'balance_after': balance_after
+                })
+
+        # If there are wallets above BRINGIN_MIN, send an email with the CSV report
+        if response_data:
+            # Create a CSV file in memory
+            csv_file = io.StringIO()
+            fieldnames = ['wallet_id', 'balance_before', 'balance_after']
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(response_data)
+
+            # Create the email message
+            msg = MIMEMultipart()
+            msg['From'] = 'your_email@example.com'
+            msg['To'] = 'technology@opago-pay.com'
+            msg['Subject'] = 'Bringin Split Report'
+            msg.attach(MIMEText('This is a test email', 'plain'))
+            msg.attach(MIMEApplication(csv_file.getvalue(), Name='report.csv'))
+
+            # Send the email
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login('your_email@example.com', 'your_password')
+                server.send_message(msg)
+                server.quit()
+
+        return {"message": "Email sent successfully"}
+
+    except Exception as e:
+        logger.error(f"Error during execution: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
