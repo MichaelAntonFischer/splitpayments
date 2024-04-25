@@ -259,7 +259,7 @@ async def execute_split_for_all(request: Request):
             wallet_after = next((w for w in audit_data_after if w['wallet_id'] == wallet_id), None)
             balance_after = wallet_after['wallet_balance'] if wallet_after else None
 
-            if balance_after is not None and balance_after > BRINGIN_MIN:
+            if balance_after is not None and balance_after/1000 > BRINGIN_MIN:
                 response_data.append({
                     'wallet_id': wallet_id,
                     'balance_before': balance_before,
