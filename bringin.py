@@ -248,6 +248,56 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
 
         return audit_data
     
+async def add_bringin_user(lightning_address: str, admin_key: str):
+    base_url = "https://bringin.opago-pay.com"
+    headers = {"X-Api-Key": admin_key}
+
+    async with httpx.AsyncClient() as client:
+        # Check if any user already has the requested lightning address as their email
+        users_response = await client.get(f"{base_url}/usermanager/api/v1/users", headers=headers)
+        users_response.raise_for_status()
+        users_data = users_response.json()
+
+        for user in users_data:
+            if user["email"] == lightning_address:
+                raise HTTPException(status_code=409, detail="Lightning address already exists")
+
+        admin_id = os.environ['OPAGO_ID']
+        user_name = lightning_address.split("@")[0]
+        wallet_name = "Offramp"
+        user_id = None
+        lnurl = None
+
+        try:
+            logger.info("Creating Bringin user")
+            user_data = await create_bringin_user(admin_id, user_name, wallet_name, lightning_address)
+            user_id = user_data["id"]
+            invoice_key = user_data["wallets"][0]["inkey"]
+            admin_key = user_data["wallets"][0]["adminkey"]
+            wallet_id = user_data["wallets"][0]["id"]
+
+            logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
+            logger.info("Activating extensions for the user")
+            await activate_extensions(user_id, ["splitpayments", "lnurlp"])
+            logger.info("Extensions activated")
+
+            logger.info("Creating LNURLp link")
+            lnurl = await create_lnurlp_link(lightning_address, admin_key)  
+            logger.info(f"LNURLp link created: {lnurl}")
+
+            return {"lnurl": lnurl}
+
+        except HTTPException as e:
+            raise e
+
+        except Exception as e:
+            logger.error(f"Error during setup: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+        finally:
+            if lnurl or user_id:
+                await cleanup_resources(lnurl, user_id, admin_key)
+    
 async def update_bringin_user(old_lightning_address: str, new_lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
     headers = {"X-Api-Key": admin_key}

@@ -17,7 +17,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import create_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization, delete_user, delete_lnurlp_link, get_bringin_audit_data, cleanup_resources
+from .bringin import create_bringin_user, add_bringin_user, activate_extensions, create_lnurlp_link, generate_hmac_authorization, delete_user, delete_lnurlp_link, get_bringin_audit_data, cleanup_resources
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -33,60 +33,34 @@ async def api_execute_split(wallet_id: str, amount: int) -> None:
     return result
 
 @splitpayments_ext.post("/api/v1/add_bringin_user", status_code=HTTP_200_OK)
-async def add_bringin_user(lightning_address: str, admin_key: str):
-    base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+async def add_bringin_user_endpoint(request: Request):
+    body = await request.json()
+    lightning_address = body.get("lightning_address")
 
-    async with httpx.AsyncClient() as client:
-        # Check if any user already has the requested lightning address as their email
-        users_response = await client.get(f"{base_url}/usermanager/api/v1/users", headers=headers)
-        users_response.raise_for_status()
-        users_data = users_response.json()
+    signature = request.headers.get("Authorization")
+    secret = os.environ["BRINGIN_SECRET"]
+    admin_key = os.environ["OPAGO_KEY"]
 
-        for user in users_data:
-            if user["email"] == lightning_address:
-                raise HTTPException(status_code=409, detail="Lightning address already exists")
+    client_timestamp_str = signature.split()[1].split(':')[0]
+    body_string = json.dumps(body, separators=(',', ':'), sort_keys=True)
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body, client_timestamp_str)
 
-        admin_id = os.environ['OPAGO_ID']
-        user_name = lightning_address.split("@")[0]
-        wallet_name = "Offramp"
-        user_id = None
-        lnurl = None
+    logger.info(f"Generated HMAC: {expected_signature}")
+    logger.info(f"Received HMAC: {signature}")
 
-        try:
-            logger.info("Creating Bringin user")
-            user_data = await create_bringin_user(admin_id, user_name, wallet_name, lightning_address)
-            user_id = user_data["id"]
-            invoice_key = user_data["wallets"][0]["inkey"]
-            admin_key = user_data["wallets"][0]["adminkey"]
-            wallet_id = user_data["wallets"][0]["id"]
+    if not signature == expected_signature:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
-            logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
-            logger.info("Activating extensions for the user")
-            await activate_extensions(user_id, ["splitpayments", "lnurlp"])
-            logger.info("Extensions activated")
+    try:
+        result = await add_bringin_user(lightning_address, admin_key)
+        return result
 
-            logger.info("Creating LNURLp link")
-            lnurl = await create_lnurlp_link(lightning_address, admin_key)  
-            logger.info(f"LNURLp link created: {lnurl}")
+    except HTTPException as e:
+        raise e
 
-            logger.info("Setting targets for the wallet")
-            target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
-            await set_targets(wallet_id, [target])
-            logger.info("Targets set")
-
-            return {"lnurl": lnurl}
-
-        except HTTPException as e:
-            raise e
-
-        except Exception as e:
-            logger.error(f"Error during setup: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-        finally:
-            if lnurl or user_id:
-                await cleanup_resources(lnurl, user_id, admin_key)
+    except Exception as e:
+        logger.error(f"Error during setup: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @splitpayments_ext.post("/api/v1/update_bringin_user", status_code=HTTP_200_OK)
 async def update_bringin_user(request: Request):
