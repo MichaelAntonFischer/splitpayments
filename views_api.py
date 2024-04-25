@@ -25,7 +25,7 @@ from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
 from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
 
-def send_email(subject, message, from_email, to_email):
+def send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password):
     msg = MIMEMultipart()
     msg['From'] = from_email
     msg['To'] = to_email
@@ -34,9 +34,10 @@ def send_email(subject, message, from_email, to_email):
     msg.attach(MIMEText(message, 'plain'))
 
     try:
-        server = smtplib.SMTP('localhost')
-        server.send_message(msg)
-        server.quit()
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.send_message(msg)
         print("Email sent successfully!")
     except Exception as e:
         print(f"Error sending email: {str(e)}")
@@ -265,10 +266,16 @@ async def execute_split_for_all(request: Request):
             csv_content = csv_file.getvalue()
 
             # Create the email message
-            subject = 'Bringin Offramp Wallet Report'
-            message = 'Please find the attached Bringin Report.'
-            from_email = 'no-reply@opago-pay.com'
+            subject = 'Bringin Split Report'
+            message = 'Please find the attached Bringin Split Report.'
+            from_email = 'info@opago-pay.com'
             to_email = 'technology@opago-pay.com'
+
+            # SMTP server configuration for ionos.de
+            smtp_server = 'smtp.ionos.de'
+            smtp_port = 587
+            smtp_username = 'info@opago-pay.com'
+            smtp_password = os.environ.get('IONOS')
 
             # Create the email message with attachment
             msg = MIMEMultipart()
@@ -286,11 +293,11 @@ async def execute_split_for_all(request: Request):
 
             # Send the email using the send_email function
             try:
-                send_email(subject, msg.as_string(), from_email, to_email)
+                send_email(subject, msg.as_string(), from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password)
                 return {"message": "Email sent successfully"}
             except Exception as e:
                 print(f"Error sending email: {str(e)}")
-                return {"message": "Error sending email"}
+                return {"message": "Error sending email"}, 500
         else:
             return {"message": "All wallets below min balance."}
 
