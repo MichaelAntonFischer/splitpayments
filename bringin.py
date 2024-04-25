@@ -307,8 +307,6 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
 
         except Exception as e:
             logger.error(f"Error during setup: {str(e)}")
-            if lnurl or user_id:
-                await cleanup_resources(lnurl, user_id, admin_key)
             if isinstance(e, HTTPException):
                 raise e
             else:
