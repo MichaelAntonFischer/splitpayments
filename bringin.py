@@ -259,6 +259,7 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
         users_data = users_response.json()
 
         for user in users_data:
+            logger.info(f"Checking user with ID: {user['id']}, Email: {user['email']}")
             if user["email"] == lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
 
