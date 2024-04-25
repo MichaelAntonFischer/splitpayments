@@ -123,6 +123,7 @@ async def execute_split(wallet_id, amount):
             if any(domain in target.wallet for domain in BRINGIN_DOMAINS):
                 # Use offramp function for BRINGIN_DOMAINS
                 amount_sats = int(amount_msat / 1000)
+                logger.info(f"Amount to split: {amount_sats} sats")
                 bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
                 bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
                 if bringin_min <= amount_sats <= bringin_max:
