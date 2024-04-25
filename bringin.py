@@ -369,12 +369,28 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
         return {"lnurl": new_lnurl}
     
 async def cleanup_resources(lnurl, user_id, admin_key):
+    base_url = "https://bringin.opago-pay.com"
     try:
         if lnurl:
-            pay_id = lnurl.split("/")[-1]
-            logger.info(f"Deleting LNURLp link: {pay_id}")
-            await delete_lnurlp_link(pay_id, admin_key)
-            logger.info("LNURLp link deleted")
+            # Fetch the list of payment links using the admin key
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers={"X-Api-Key": admin_key})
+                response.raise_for_status()
+                pay_links = response.json()
+
+            # Find the payment link ID matching the provided lnurl
+            pay_id = None
+            for link in pay_links:
+                if link["lnurl"] == lnurl:
+                    pay_id = link["id"]
+                    break
+
+            if pay_id:
+                logger.info(f"Deleting LNURLp link: {pay_id}")
+                await delete_lnurlp_link(pay_id, admin_key)
+                logger.info("LNURLp link deleted")
+            else:
+                logger.warning(f"No matching payment link found for lnurl: {lnurl}")
     except Exception as cleanup_error:
         logger.error(f"Error during LNURLp link cleanup: {str(cleanup_error)}")
 
