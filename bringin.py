@@ -247,3 +247,72 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
                 audit_data.append(wallet_data)
 
         return audit_data
+    
+async def update_bringin_user(old_lightning_address: str, new_lightning_address: str, admin_key: str):
+    base_url = "https://bringin.opago-pay.com"
+    headers = {"X-Api-Key": admin_key}
+
+    async with httpx.AsyncClient() as client:
+        # Check if the new lightning address is already taken
+        users_response = await client.get(f"{base_url}/usermanager/api/v1/users", headers=headers)
+        users_response.raise_for_status()
+        users_data = users_response.json()
+
+        for user in users_data:
+            if user["email"] == new_lightning_address:
+                raise HTTPException(status_code=409, detail="Lightning address already exists")
+
+        # Get the user associated with the old lightning address
+        user_id = None
+        for user in users_data:
+            if user["email"] == old_lightning_address:
+                user_id = user["id"]
+                break
+
+        if not user_id:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get the wallet associated with the user
+        wallets_response = await client.get(f"{base_url}/usermanager/api/v1/wallets", headers=headers)
+        wallets_response.raise_for_status()
+        wallets_data = wallets_response.json()
+
+        wallet_id = None
+        admin_key = None
+        for wallet in wallets_data:
+            if wallet["user"] == user_id:
+                wallet_id = wallet["id"]
+                admin_key = wallet["adminkey"]
+                break
+
+        if not wallet_id:
+            raise HTTPException(status_code=404, detail="Wallet not found")
+
+        # Create a new LNURLp link for the wallet
+        new_lnurl = await create_lnurlp_link(new_lightning_address, admin_key)
+
+        # Delete the old LNURLp link
+        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=headers)
+        old_lnurl_response.raise_for_status()
+        old_lnurl_data = old_lnurl_response.json()
+
+        if old_lnurl_data:
+            old_lnurl_id = old_lnurl_data[0]["id"]
+            await delete_lnurlp_link(old_lnurl_id, admin_key)
+
+        return {"lnurl": new_lnurl}
+    
+async def cleanup_resources(lnurl, user_id, admin_key):
+    try:
+        if lnurl:
+            pay_id = lnurl.split("/")[-1]
+            logger.info(f"Deleting LNURLp link: {pay_id}")
+            await delete_lnurlp_link(pay_id, admin_key)
+            logger.info("LNURLp link deleted")
+        
+        if user_id:
+            logger.info(f"Deleting user: {user_id}")
+            await delete_user(user_id)
+            logger.info("User deleted")
+    except Exception as cleanup_error:
+        logger.error(f"Error during cleanup: {str(cleanup_error)}")
