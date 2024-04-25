@@ -210,7 +210,7 @@ async def delete_lnurlp_link(pay_id: str, admin_key: str):
             raise Exception(f"Failed to delete LNURLp link: {response.text}")
 
 
-async def get_bringin_audit_data(admin_key: str):
+async def get_bringin_audit_data(admin_key: str, include_transactions: bool = False):
     base_url = "https://bringin.opago-pay.com"
     headers = {"X-Api-Key": admin_key}
 
@@ -227,20 +227,23 @@ async def get_bringin_audit_data(admin_key: str):
         for user in users_data:
             user_wallets = [wallet for wallet in wallets_data if wallet["user"] == user["id"]]
             for wallet in user_wallets:
-                transactions_response = await client.get(f"{base_url}/usermanager/api/v1/transactions/{wallet['id']}", headers=headers)
-                transactions_response.raise_for_status()
-                transactions_data = transactions_response.json()
-
                 wallet_balance_response = await client.get(f"{base_url}/api/v1/wallet", headers={"X-Api-Key": wallet["adminkey"]})
                 wallet_balance_response.raise_for_status()
                 wallet_balance_data = wallet_balance_response.json()
 
-                audit_data.append({
+                wallet_data = {
                     "user_id": user["id"],
                     "user_email": user["email"],
                     "wallet_id": wallet["id"],
-                    "wallet_balance": wallet_balance_data["balance"],
-                    "transactions": transactions_data
-                })
+                    "wallet_balance": wallet_balance_data["balance"]
+                }
+
+                if include_transactions:
+                    transactions_response = await client.get(f"{base_url}/usermanager/api/v1/transactions/{wallet['id']}", headers=headers)
+                    transactions_response.raise_for_status()
+                    transactions_data = transactions_response.json()
+                    wallet_data["transactions"] = transactions_data
+
+                audit_data.append(wallet_data)
 
         return audit_data
