@@ -7,8 +7,9 @@ import json
 from http import HTTPStatus
 from typing import List
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from fastapi import Depends, Request
 from loguru import logger
@@ -22,7 +23,7 @@ from .tasks import execute_split
 from . import scheduled_tasks, splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
-from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
+from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user, send_email
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -244,28 +245,32 @@ async def execute_split_for_all(request: Request):
             writer.writeheader()
             writer.writerows(response_data)
 
+            # Get the CSV file content
+            csv_content = csv_file.getvalue()
+
             # Create the email message
-            message = Mail(
-                from_email='your_email@example.com',
-                to_emails='technology@opago-pay.com',
-                subject='Bringin Split Report',
-                plain_text_content='This is a test email'
-            )
+            subject = 'Bringin Offramp Wallet Report'
+            message = 'Please find the attached Bringin Report.'
+            from_email = 'no-reply@opago-pay.com'
+            to_email = 'technology@opago-pay.com'
 
-            # Attach the CSV file to the email
-            attachment = Attachment()
-            attachment.file_content = FileContent(csv_file.getvalue())
-            attachment.file_type = FileType('text/csv')
-            attachment.file_name = FileName('report.csv')
-            attachment.disposition = Disposition('attachment')
-            message.attachment = attachment
+            # Create the email message with attachment
+            msg = MIMEMultipart()
+            msg['From'] = from_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
 
-            # Send the email using SendGrid
-            sendgrid_api_key = os.environ.get('SENDGRID')
+            # Attach the message body
+            msg.attach(MIMEText(message, 'plain'))
+
+            # Attach the CSV file
+            csv_attachment = MIMEText(csv_content, 'csv')
+            csv_attachment.add_header('Content-Disposition', 'attachment', filename='report.csv')
+            msg.attach(csv_attachment)
+
+            # Send the email using the send_email function
             try:
-                sg = SendGridAPIClient(sendgrid_api_key)
-                response = sg.send(message)
-                print(f"Email sent with status code: {response.status_code}")
+                send_email(subject, msg.as_string(), from_email, to_email)
                 return {"message": "Email sent successfully"}
             except Exception as e:
                 print(f"Error sending email: {str(e)}")
