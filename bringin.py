@@ -34,11 +34,12 @@ def generate_hmac_authorization(secret, method, path, body, timestamp=None):
         timestamp = str(timestamp)  # Ensure timestamp is a string even if it's provided as an integer
 
     logger.info(f"Secret: {secret}")
-    body_string = json.dumps(body, separators=(',', ':')) if body else '{}'
+    body_string = json.dumps(body, separators=(',', ':'), sort_keys=True) if body else '{}'
     logger.info(f"Body string: {body_string}")
     md5_hasher = hashlib.md5()
     md5_hasher.update(body_string.encode('utf-8'))
     request_content_hex_string = md5_hasher.hexdigest()
+    logger.info(f"MD5 Hash: {request_content_hex_string}")
     signature_raw_data = timestamp + method + path + request_content_hex_string
     logger.info(f"Raw Data for HMAC: {signature_raw_data}")
     signature = hmac.new(secret.encode(), signature_raw_data.encode(), hashlib.sha256).hexdigest()
