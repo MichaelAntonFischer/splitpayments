@@ -259,8 +259,9 @@ async def execute_split_for_all(request: Request):
                 server.login('your_email@example.com', 'your_password')
                 server.send_message(msg)
                 server.quit()
-
-        return {"message": "Email sent successfully"}
+            return {"message": "Email sent successfully"}
+        else:
+            return {"message": "All wallets below min balance"}
 
     except Exception as e:
         logger.error(f"Error during execution: {str(e)}")
