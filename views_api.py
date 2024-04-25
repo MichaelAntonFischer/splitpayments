@@ -289,7 +289,7 @@ async def execute_split_for_all(request: Request):
             smtp_username = 'info@opago-pay.com'
             smtp_password = os.environ.get('IONOS')
 
-            logger.info(f"SMTP server: {smtp_server}, port: {smtp_port}, username: {smtp_username}, password: {smtp_password}")
+            # logger.info(f"SMTP server: {smtp_server}, port: {smtp_port}, username: {smtp_username}, password: {smtp_password}")
 
             # Send the email using the send_email function
             email_sent = send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password, csv_content, 'report.csv')
