@@ -25,6 +25,22 @@ from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
 from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
 
+def send_email(subject, message, from_email, to_email):
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(message, 'plain'))
+
+    try:
+        server = smtplib.SMTP('localhost')
+        server.send_message(msg)
+        server.quit()
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
     wallet: WalletTypeInfo = Depends(require_admin_key),
