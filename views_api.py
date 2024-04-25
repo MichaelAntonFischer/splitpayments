@@ -196,9 +196,6 @@ async def api_stop():
             logger.warning(ex)
     return {"success": True}
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
-
 @splitpayments_ext.post("/api/v1/execute_split_for_all", status_code=HTTP_200_OK)
 async def execute_split_for_all(request: Request):
     admin_key = os.environ["OPAGO_KEY"]
