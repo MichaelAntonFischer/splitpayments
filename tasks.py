@@ -62,6 +62,7 @@ async def on_invoice_paid(payment: Payment) -> None:
                 amount_sats = int(amount_msat / 1000)
                 bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
                 bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
+                payment_request = None
                 if bringin_min <= amount_sats <= bringin_max:
                     payment_request = await offramp(target.wallet, amount_sats)
                 else:
@@ -123,9 +124,9 @@ async def execute_split(wallet_id, amount):
             if any(domain in target.wallet for domain in BRINGIN_DOMAINS):
                 # Use offramp function for BRINGIN_DOMAINS
                 amount_sats = int(amount_msat / 1000)
-                logger.info(f"Amount to split: {amount_sats} sats")
                 bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
                 bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
+                payment_request = None
                 if bringin_min <= amount_sats <= bringin_max:
                     payment_request = await offramp(target.wallet, amount_sats)
                 else:
