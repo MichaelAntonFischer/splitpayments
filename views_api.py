@@ -39,8 +39,10 @@ def send_email(subject, message, from_email, to_email, smtp_server, smtp_port, s
             server.login(smtp_username, smtp_password)
             server.send_message(msg)
         print("Email sent successfully!")
+        return True
     except Exception as e:
         print(f"Error sending email: {str(e)}")
+        return False
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -277,6 +279,8 @@ async def execute_split_for_all(request: Request):
             smtp_username = 'info@opago-pay.com'
             smtp_password = os.environ.get('IONOS')
 
+            logger.info(f"SMTP server: {smtp_server}, port: {smtp_port}, username: {smtp_username}, password: {smtp_password}")
+
             # Create the email message with attachment
             msg = MIMEMultipart()
             msg['From'] = from_email
@@ -292,11 +296,11 @@ async def execute_split_for_all(request: Request):
             msg.attach(csv_attachment)
 
             # Send the email using the send_email function
-            try:
-                send_email(subject, msg.as_string(), from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password)
+            email_sent = send_email(subject, msg.as_string(), from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password)
+
+            if email_sent:
                 return {"message": "Email sent successfully"}
-            except Exception as e:
-                print(f"Error sending email: {str(e)}")
+            else:
                 return {"message": "Error sending email"}, 500
         else:
             return {"message": "All wallets below min balance."}
