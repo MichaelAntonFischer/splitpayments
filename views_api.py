@@ -10,6 +10,8 @@ from typing import List
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 from fastapi import Depends, Request
 from loguru import logger
@@ -25,13 +27,20 @@ from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
 from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
 
-def send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password):
+def send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password, attachment_content, attachment_filename):
     msg = MIMEMultipart()
     msg['From'] = from_email
     msg['To'] = to_email
     msg['Subject'] = subject
 
     msg.attach(MIMEText(message, 'plain'))
+
+    # Create the attachment
+    attachment = MIMEBase('application', 'octet-stream')
+    attachment.set_payload(attachment_content)
+    encoders.encode_base64(attachment)
+    attachment.add_header('Content-Disposition', f'attachment; filename="{attachment_filename}"')
+    msg.attach(attachment)
 
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
@@ -43,6 +52,7 @@ def send_email(subject, message, from_email, to_email, smtp_server, smtp_port, s
     except Exception as e:
         print(f"Error sending email: {str(e)}")
         return False
+
 
 @splitpayments_ext.get("/api/v1/targets")
 async def api_targets_get(
@@ -281,22 +291,8 @@ async def execute_split_for_all(request: Request):
 
             logger.info(f"SMTP server: {smtp_server}, port: {smtp_port}, username: {smtp_username}, password: {smtp_password}")
 
-            # Create the email message with attachment
-            msg = MIMEMultipart()
-            msg['From'] = from_email
-            msg['To'] = to_email
-            msg['Subject'] = subject
-
-            # Attach the message body
-            msg.attach(MIMEText(message, 'plain'))
-
-            # Attach the CSV file
-            csv_attachment = MIMEText(csv_content, 'csv')
-            csv_attachment.add_header('Content-Disposition', 'attachment', filename='report.csv')
-            msg.attach(csv_attachment)
-
             # Send the email using the send_email function
-            email_sent = send_email(subject, msg.as_string(), from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password)
+            email_sent = send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password, csv_content, 'report.csv')
 
             if email_sent:
                 return {"message": "Email sent successfully"}
