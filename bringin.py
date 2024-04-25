@@ -9,6 +9,8 @@ import hashlib
 from loguru import logger
 from fastapi import HTTPException
 from typing import List
+from .crud import set_targets
+from .models import Target
 
 API_BASE_URL = 'https://api.bringin.xyz'
 BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
@@ -296,6 +298,11 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             lnurl = await create_lnurlp_link(lightning_address, admin_key)  
             logger.info(f"LNURLp link created: {lnurl}")
 
+            logger.info("Setting targets for the wallet")
+            target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
+            await set_targets(wallet_id, [target])
+            logger.info("Targets set")
+
             return {"lnurl": lnurl}
 
         except HTTPException as e:
@@ -370,10 +377,13 @@ async def cleanup_resources(lnurl, user_id, admin_key):
             logger.info(f"Deleting LNURLp link: {pay_id}")
             await delete_lnurlp_link(pay_id, admin_key)
             logger.info("LNURLp link deleted")
-        
+    except Exception as cleanup_error:
+        logger.error(f"Error during LNURLp link cleanup: {str(cleanup_error)}")
+
+    try:
         if user_id:
             logger.info(f"Deleting user: {user_id}")
             await delete_user(user_id)
             logger.info("User deleted")
     except Exception as cleanup_error:
-        logger.error(f"Error during cleanup: {str(cleanup_error)}")
+        logger.error(f"Error during user cleanup: {str(cleanup_error)}")
