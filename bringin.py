@@ -231,11 +231,15 @@ async def get_bringin_audit_data(admin_key: str):
                 transactions_response.raise_for_status()
                 transactions_data = transactions_response.json()
 
+                wallet_balance_response = await client.get(f"{base_url}/api/v1/wallet", headers={"X-Api-Key": wallet["adminkey"]})
+                wallet_balance_response.raise_for_status()
+                wallet_balance_data = wallet_balance_response.json()
+
                 audit_data.append({
                     "user_id": user["id"],
                     "user_email": user["email"],
                     "wallet_id": wallet["id"],
-                    "wallet_balance": wallet["balance"],
+                    "wallet_balance": wallet_balance_data["balance"],
                     "transactions": transactions_data
                 })
 
