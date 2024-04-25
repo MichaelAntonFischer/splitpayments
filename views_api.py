@@ -117,6 +117,39 @@ async def bringin_audit(request: Request):
         logger.error(f"Error during Bringin audit: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@splitpayments_ext.post("/api/v1/execute_split_for_all", status_code=HTTP_200_OK)
+async def execute_split_for_all(request: Request):
+    signature = request.headers.get("Authorization")
+    secret = os.environ["BRINGIN_SECRET"]
+    admin_key = os.environ["OPAGO_KEY"]
+
+    client_timestamp_str = signature.split()[1].split(':')[0]
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, {}, client_timestamp_str)
+
+    logger.info(f"Generated HMAC: {expected_signature}")
+    logger.info(f"Received HMAC: {signature}")
+
+    if not signature == expected_signature:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
+
+    BRINGIN_MIN = float(os.environ["BRINGIN_MIN"])
+    BRINGIN_MAX = float(os.environ["BRINGIN_MAX"])
+
+    try:
+        audit_data = await get_bringin_audit_data(admin_key, include_transactions=True)
+        for wallet in audit_data:
+            balance = wallet['wallet_balance']
+            if balance > BRINGIN_MIN:
+                amount = balance * 0.98  # Subtract 2%
+                if balance > BRINGIN_MAX:
+                    amount = BRINGIN_MAX
+                await execute_split(wallet['wallet_id'], int(amount))
+        return {"message": "Split executed for all eligible wallets"}
+
+    except Exception as e:
+        logger.error(f"Error during processing: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @splitpayments_ext.put("/api/v1/targets", status_code=HTTPStatus.OK)
 async def api_targets_set(
     target_put: TargetPutList,
