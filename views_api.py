@@ -240,10 +240,10 @@ async def execute_split_for_all(request: Request):
         for wallet in audit_data_before:
             balance = wallet['wallet_balance']
             logger.info(f"Balance for {wallet['wallet_id']}: {balance}")
-            if balance > BRINGIN_MIN:
+            if balance/1000 > BRINGIN_MIN:
                 amount = balance * 0.98  # Subtract 2%
-                if balance > BRINGIN_MAX:
-                    amount = BRINGIN_MAX
+                if balance/1000 > BRINGIN_MAX:
+                    amount = BRINGIN_MAX * 1000
                 await execute_split(wallet['wallet_id'], int(amount))
 
         # Run the audit again after executing the splits
