@@ -1,4 +1,5 @@
 import asyncio
+import os
 import json
 from math import floor
 from typing import Optional
@@ -59,7 +60,12 @@ async def on_invoice_paid(payment: Payment) -> None:
                 # Use offramp function for BRINGIN_DOMAINS
                 logger.info(f"Using offramp for BRINGIN_DOMAINS: {target.wallet}")
                 amount_sats = int(amount_msat / 1000)
-                payment_request = await offramp(target.wallet, amount_sats)
+                bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
+                bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
+                if bringin_min <= amount_sats <= bringin_max:
+                    payment_request = await offramp(target.wallet, amount_sats)
+                else:
+                    logger.info(f"Amount {amount_sats} sats not within BRINGIN limits ({bringin_min}-{bringin_max} sats). Skipping offramp.")
             elif target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
                 logger.info(f"Using standard LNURL process: {target.wallet}")
                 safe_amount_msat = amount_msat - fee_reserve(amount_msat)
@@ -117,7 +123,12 @@ async def execute_split(wallet_id, amount):
             if any(domain in target.wallet for domain in BRINGIN_DOMAINS):
                 # Use offramp function for BRINGIN_DOMAINS
                 amount_sats = int(amount_msat / 1000)
-                payment_request = await offramp(target.wallet, amount_sats)
+                bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
+                bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
+                if bringin_min <= amount_sats <= bringin_max:
+                    payment_request = await offramp(target.wallet, amount_sats)
+                else:
+                    logger.info(f"Amount {amount_sats} sats not within BRINGIN limits ({bringin_min}-{bringin_max} sats). Skipping offramp.")
             elif target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
                 safe_amount_msat = amount_msat - fee_reserve(amount_msat)
                 payment_request = await get_lnurl_invoice(
