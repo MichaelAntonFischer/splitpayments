@@ -35,6 +35,7 @@ def generate_hmac_authorization(secret, method, path, body, timestamp=None):
 
     logger.info(f"Secret: {secret}")
     body_string = json.dumps(body, separators=(',', ':')) if body else '{}'
+    logger.info(f"Body string: {body_string}")
     md5_hasher = hashlib.md5()
     md5_hasher.update(body_string.encode())
     request_content_hex_string = md5_hasher.hexdigest()

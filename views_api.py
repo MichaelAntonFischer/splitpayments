@@ -73,7 +73,7 @@ async def update_bringin_user(request: Request):
     admin_key = os.environ["OPAGO_KEY"]
 
     client_timestamp_str = signature.split()[1].split(':')[0]
-    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body_string.decode('utf-8'), client_timestamp_str)
+    expected_signature = generate_hmac_authorization(secret, request.method, request.url.path, body_md5_hex, client_timestamp_str)
 
     logger.info(f"Generated HMAC: {expected_signature}")
     logger.info(f"Received HMAC: {signature}")
