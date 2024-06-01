@@ -3,5 +3,5 @@
   "short_description": "Offramp to bringin.xyz via LNaddress",
   "tile": "https://bringin.xyz/wp-content/uploads/2023/11/Frame-7483-1.png",
   "contributors": ["fiatjaf", "cryptograffiti", "OPAGO"],
-  "min_lnbits_version": "0.11.0"
+  "min_lnbits_version": "0.12.5"
 }

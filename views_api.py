@@ -19,10 +19,10 @@ from starlette.exceptions import HTTPException
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_200_OK
 
 from lnbits.core.crud import get_wallet, get_wallet_for_key
-from lnbits.decorators import WalletTypeInfo, check_admin, require_admin_key
+from lnbits.decorators import WalletTypeInfo, require_admin_key
 
 from .tasks import execute_split
-from . import scheduled_tasks, splitpayments_ext
+from . import splitpayments_ext
 from .crud import get_targets, set_targets
 from .models import Target, TargetPutList
 from .bringin import add_bringin_user, generate_hmac_authorization, get_bringin_audit_data, update_bringin_user
@@ -212,19 +212,6 @@ async def api_targets_delete(
     source_wallet: WalletTypeInfo = Depends(require_admin_key),
 ) -> None:
     await set_targets(source_wallet.wallet.id, [])
-
-
-# deinit extension invoice listener
-@splitpayments_ext.delete(
-    "/api/v1", status_code=HTTPStatus.OK, dependencies=[Depends(check_admin)]
-)
-async def api_stop():
-    for t in scheduled_tasks:
-        try:
-            t.cancel()
-        except Exception as ex:
-            logger.warning(ex)
-    return {"success": True}
 
 @splitpayments_ext.post("/api/v1/execute_split_for_all", status_code=HTTP_200_OK)
 async def execute_split_for_all(request: Request):
