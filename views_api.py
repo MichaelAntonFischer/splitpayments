@@ -224,6 +224,7 @@ async def execute_split_for_all(request: Request):
         audit_data_before = await get_bringin_audit_data(admin_key, include_transactions=True)
 
         # Execute the splits
+        response_data = []
         for wallet in audit_data_before:
             balance = wallet['wallet_balance']
             logger.info(f"Balance for {wallet['wallet_id']}: {balance}")
@@ -231,33 +232,43 @@ async def execute_split_for_all(request: Request):
                 amount = balance * 0.98  # Subtract 2%
                 if balance/1000 > BRINGIN_MAX:
                     amount = BRINGIN_MAX * 1000
-                await execute_split(wallet['wallet_id'], int(amount))
+                try:
+                    await execute_split(wallet['wallet_id'], int(amount))
+                    reason = 'Split executed successfully'
+                except Exception as e:
+                    reason = f'Error executing split: {str(e)}'
+            else:
+                reason = 'Balance below BRINGIN_MIN before split'
+
+            response_data.append({
+                'wallet_id': wallet['wallet_id'],
+                'balance_before': balance,
+                'balance_after': None,  # This will be updated after the second audit
+                'reason': reason
+            })
 
         # Run the audit again after executing the splits
         audit_data_after = await get_bringin_audit_data(admin_key, include_transactions=True)
 
-        # Compare the balances and create the response
-        response_data = []
-        for wallet_before in audit_data_before:
-            wallet_id = wallet_before['wallet_id']
-            balance_before = wallet_before['wallet_balance']
-
-            # Find the corresponding wallet in the audit data after the splits
+        # Update the response data with the balances after the splits
+        for wallet_data in response_data:
+            wallet_id = wallet_data['wallet_id']
             wallet_after = next((w for w in audit_data_after if w['wallet_id'] == wallet_id), None)
             balance_after = wallet_after['wallet_balance'] if wallet_after else None
+            wallet_data['balance_after'] = balance_after
 
             if balance_after is not None and balance_after/1000 > BRINGIN_MIN:
-                response_data.append({
-                    'wallet_id': wallet_id,
-                    'balance_before': balance_before,
-                    'balance_after': balance_after
-                })
+                wallet_data['reason'] = 'Split executed successfully'
+            elif balance_after is not None:
+                wallet_data['reason'] = 'Balance below BRINGIN_MIN after split'
+            else:
+                wallet_data['reason'] = 'Wallet not found after split'
 
         # If there are wallets above BRINGIN_MIN, send an email with the CSV report
         if response_data:
             # Create a CSV file in memory
             csv_file = io.StringIO()
-            fieldnames = ['wallet_id', 'balance_before', 'balance_after']
+            fieldnames = ['wallet_id', 'balance_before', 'balance_after', 'reason']
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(response_data)
