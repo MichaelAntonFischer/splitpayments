@@ -226,16 +226,17 @@ async def execute_split_for_all(request: Request):
         # Execute the splits
         response_data = []
         for wallet in audit_data_before:
-            balance = wallet['wallet_balance']
+            balance = wallet['wallet_balance'] / 1000  # Convert msats to sats
             user_id = wallet['user_id']
             email = wallet['user_email']
-            logger.info(f"Balance for {wallet['wallet_id']}: {balance}")
-            if balance/1000 > BRINGIN_MIN:
+            logger.info(f"Balance for {wallet['wallet_id']}: {balance} sats")
+            if balance > BRINGIN_MIN:
                 amount = balance * 0.98  # Subtract 2%
-                if balance/1000 > BRINGIN_MAX:
-                    amount = BRINGIN_MAX * 1000
+                if balance > BRINGIN_MAX:
+                    amount = BRINGIN_MAX
+                amount = int(amount)  # Round down to ensure it's below the fee reserve
                 try:
-                    await execute_split(wallet['wallet_id'], int(amount))
+                    await execute_split(wallet['wallet_id'], amount * 1000)  # Convert sats back to msats for execution
                     reason = 'Split executed successfully'
                 except Exception as e:
                     reason = f'Error executing split: {str(e)}'
@@ -258,10 +259,10 @@ async def execute_split_for_all(request: Request):
         for wallet_data in response_data:
             wallet_id = wallet_data['wallet_id']
             wallet_after = next((w for w in audit_data_after if w['wallet_id'] == wallet_id), None)
-            balance_after = wallet_after['wallet_balance'] if wallet_after else None
+            balance_after = (wallet_after['wallet_balance'] / 1000) if wallet_after else None  # Convert msats to sats
             wallet_data['balance_after'] = balance_after
 
-            if balance_after is not None and balance_after/1000 > BRINGIN_MIN:
+            if balance_after is not None and balance_after > BRINGIN_MIN:
                 wallet_data['reason'] = 'Split executed successfully'
             elif balance_after is not None:
                 wallet_data['reason'] = 'Balance below BRINGIN_MIN after split'
