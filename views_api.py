@@ -227,6 +227,8 @@ async def execute_split_for_all(request: Request):
         response_data = []
         for wallet in audit_data_before:
             balance = wallet['wallet_balance']
+            user_id = wallet['user_id']
+            email = wallet['user_email']
             logger.info(f"Balance for {wallet['wallet_id']}: {balance}")
             if balance/1000 > BRINGIN_MIN:
                 amount = balance * 0.98  # Subtract 2%
@@ -242,6 +244,8 @@ async def execute_split_for_all(request: Request):
 
             response_data.append({
                 'wallet_id': wallet['wallet_id'],
+                'user_id': user_id,
+                'email': email,
                 'balance_before': balance,
                 'balance_after': None,  # This will be updated after the second audit
                 'reason': reason
@@ -268,7 +272,7 @@ async def execute_split_for_all(request: Request):
         if response_data:
             # Create a CSV file in memory
             csv_file = io.StringIO()
-            fieldnames = ['wallet_id', 'balance_before', 'balance_after', 'reason']
+            fieldnames = ['wallet_id', 'user_id', 'email', 'balance_before', 'balance_after', 'reason']
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(response_data)
@@ -287,8 +291,6 @@ async def execute_split_for_all(request: Request):
             smtp_port = 587
             smtp_username = 'info@opago-pay.com'
             smtp_password = os.environ.get('IONOS')
-
-            # logger.info(f"SMTP server: {smtp_server}, port: {smtp_port}, username: {smtp_username}, password: {smtp_password}")
 
             # Send the email using the send_email function
             email_sent = send_email(subject, message, from_email, to_email, smtp_server, smtp_port, smtp_username, smtp_password, csv_content, 'report.csv')
