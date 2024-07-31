@@ -218,6 +218,7 @@ async def execute_split_for_all(request: Request):
     admin_key = os.environ["OPAGO_KEY"]
     BRINGIN_MIN = float(os.environ["BRINGIN_MIN"])
     BRINGIN_MAX = float(os.environ["BRINGIN_MAX"])
+    FEE_RESERVE_PERCENT = 0.001  # 0.1%
 
     try:
         # Run the audit before executing the splits
@@ -230,10 +231,9 @@ async def execute_split_for_all(request: Request):
             user_id = wallet['user_id']
             email = wallet['user_email']
             logger.info(f"Balance for {wallet['wallet_id']}: {balance} sats")
-            if balance > BRINGIN_MIN:
-                amount = balance * 0.98  # Subtract 2%
-                if balance > BRINGIN_MAX:
-                    amount = BRINGIN_MAX
+            if BRINGIN_MIN < balance < BRINGIN_MAX:
+                fee_reserve_amount = balance * FEE_RESERVE_PERCENT
+                amount = balance - fee_reserve_amount  # Subtract fee reserve
                 amount = int(amount)  # Round down to ensure it's below the fee reserve
                 try:
                     await execute_split(wallet['wallet_id'], amount * 1000)  # Convert sats back to msats for execution
@@ -241,7 +241,7 @@ async def execute_split_for_all(request: Request):
                 except Exception as e:
                     reason = f'Error executing split: {str(e)}'
             else:
-                reason = 'Balance below BRINGIN_MIN before split'
+                reason = f'Amount {balance} sats not within BRINGIN limits ({BRINGIN_MIN}-{BRINGIN_MAX} sats). Skipping offramp.'
 
             response_data.append({
                 'wallet_id': wallet['wallet_id'],

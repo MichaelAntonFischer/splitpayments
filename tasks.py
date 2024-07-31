@@ -18,7 +18,6 @@ from .bringin import offramp
 from .crud import get_targets
 
 BRINGIN_DOMAINS = ["bringin.xyz", "bringin.opago-pay.com"]
-FEE_RESERVE_PERCENT = 0.0011  # 0.11%
 
 async def wait_for_paid_invoices():
     invoice_queue = asyncio.Queue()
@@ -129,15 +128,13 @@ async def execute_split(wallet_id, amount):
                 bringin_min = int(os.environ.get("BRINGIN_MIN", 0))
                 bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
                 payment_request = None
-                fee_reserve_amount = bringin_min * FEE_RESERVE_PERCENT
-                if bringin_min - fee_reserve_amount <= amount_sats <= bringin_max:
+                if bringin_min <= amount_sats <= bringin_max:
                     payment_request = await offramp(target.wallet, amount_sats)
                 else:
                     logger.info(f"Amount {amount_sats} sats not within BRINGIN limits ({bringin_min}-{bringin_max} sats). Skipping offramp.")
             elif target.wallet.find("@") >= 0 or target.wallet.find("LNURL") >= 0:
-                safe_amount_msat = amount_msat - fee_reserve(amount_msat)
                 payment_request = await get_lnurl_invoice(
-                    target.wallet, wallet_id, safe_amount_msat, memo
+                    target.wallet, wallet_id, amount_msat, memo
                 )
             else:
                 _, payment_request = await create_invoice(
