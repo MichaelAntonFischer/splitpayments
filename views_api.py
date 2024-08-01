@@ -269,8 +269,11 @@ async def execute_split_for_all(request: Request):
             else:
                 wallet_data['reason'] = 'Wallet not found after split'
 
+        # Check if there are any wallets above BRINGIN_MIN after the split
+        wallets_above_min = any(wallet['balance_after'] is not None and wallet['balance_after'] > BRINGIN_MIN for wallet in response_data)
+
         # If there are wallets above BRINGIN_MIN, send an email with the CSV report
-        if response_data:
+        if wallets_above_min:
             # Create a CSV file in memory
             csv_file = io.StringIO()
             fieldnames = ['wallet_id', 'user_id', 'email', 'balance_before', 'balance_after', 'reason']
