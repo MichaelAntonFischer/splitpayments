@@ -89,13 +89,11 @@ async def fetch_users_api_key(api_key, secret_key, lightning_address):
             return None
 
 
-async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address, label="OPAGO offramp ", payment_method="LIGHTNING", source_id=None):
-    user_part = lightning_address.split("@")[0]
-
+async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address, label="OPAGO offramp ", payment_method="LIGHTNING", source_id=None): 
     body = {
         "sourceAmount": str(amount_sats), 
         "ipAddress": ip_address,  
-        "label": f"{label}_{user_part}", 
+        "label": label + lightning_address,  
         "paymentMethod": payment_method  
     }
     # Include sourceId if provided
