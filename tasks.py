@@ -18,6 +18,7 @@ from .bringin import offramp
 from .crud import get_targets
 
 BRINGIN_DOMAINS = ["bringin.xyz", "bringin.opago-pay.com"]
+FEE_RESERVE_PERCENT = 0.001  # 0.1%
 
 async def wait_for_paid_invoices():
     invoice_queue = asyncio.Queue()
