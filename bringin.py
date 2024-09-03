@@ -17,14 +17,27 @@ BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
 BRINGIN_ENDPOINT_OFFRAMP = '/api/v0/offramp/order'
 
 async def offramp(lightning_address, amount_sats):
-    # Example placeholders - replace with actual values or logic to obtain them
-    ip_address = await fetch_public_ip()
+    base_url = "https://bringin.opago-pay.com"
+    api_key = os.environ.get("BRINGIN_API_KEY")
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json"
+    }
+    body = {
+        "sourceAmount": str(amount_sats),
+        "ipAddress": "217.160.118.57",  # Replace with the actual IP address if needed
+        "label": "OPAGO_offramp",  # Simplified label
+        "paymentMethod": "LIGHTNING"
+    }
 
-    user_api_key = await fetch_users_api_key(os.environ['BRINGIN_KEY'].strip('"'), os.environ['BRINGIN_SECRET'].strip('"'), lightning_address)
-    if user_api_key:
-        result = await create_offramp_order(user_api_key, lightning_address, amount_sats, ip_address)
-        logger.info(f"Create offramp order returned: {result}")
-        return result
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{base_url}/api/v1/offramp", headers=headers, json=body)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("paymentRequest")
+        else:
+            logger.error(f"Failed to create offramp order. Error code: {response.status_code} Response: {response.text}")
+            return None
 
 
 # Function to generate HMAC authorization header
