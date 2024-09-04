@@ -93,8 +93,7 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
     body = {
         "sourceAmount": str(amount_sats), 
         "ipAddress": ip_address,
-        "paymentMethod": payment_method,  
-        "label": label + lightning_address 
+        "paymentMethod": payment_method
     }
     # Include sourceId if provided
     if source_id:
