@@ -147,8 +147,17 @@ async def bringin_audit(request: Request):
 
     try:
         audit_data = await get_bringin_audit_data(admin_key, include_transactions, lnaddress)
+        if lnaddress and not audit_data:
+            # If a specific user was requested but not found, return 409
+            raise HTTPException(
+                status_code=409, 
+                detail=f"User not found: {lnaddress}@bringin.xyz" if '@' not in lnaddress else f"User not found: {lnaddress}"
+            )
         return audit_data
 
+    except HTTPException as e:
+        # Re-raise HTTP exceptions (including our 409)
+        raise e
     except Exception as e:
         logger.error(f"Error during Bringin audit: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
