@@ -232,7 +232,10 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
         # Filter users if lnaddress is provided
         if lnaddress:
             # Append domain if not present
-            full_address = f"{lnaddress}@bringin.xyz" if "@" not in lnaddress else lnaddress
+            if "@" not in lnaddress:
+                full_address = f"{lnaddress}@bringin.xyz"
+            else:
+                full_address = lnaddress
             users_data = [user for user in users_data if user["email"] == full_address]
             if not users_data:
                 return []

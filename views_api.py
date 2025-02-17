@@ -143,9 +143,10 @@ async def bringin_audit(request: Request):
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
     include_transactions = request.query_params.get("include_transactions", "false").lower() == "true"
+    lnaddress = request.query_params.get("lnaddress")
 
     try:
-        audit_data = await get_bringin_audit_data(admin_key, include_transactions)
+        audit_data = await get_bringin_audit_data(admin_key, include_transactions, lnaddress)
         return audit_data
 
     except Exception as e:
