@@ -17,7 +17,7 @@ from .bringin import offramp
 
 from .crud import get_targets
 
-BRINGIN_DOMAINS = ["bringin.xyz", "bringin.opago-pay.com"]
+BRINGIN_DOMAINS = ["bringin.xyz", "bringin.opago-pay.com", "bringin.opago.com"]
 FEE_RESERVE_PERCENT = 0.001  # 0.1%
 
 async def wait_for_paid_invoices():
@@ -65,6 +65,15 @@ async def on_invoice_paid(payment: Payment) -> None:
                 bringin_max = int(os.environ.get("BRINGIN_MAX", float('inf')))
                 payment_request = None
                 fee_reserve_amount = bringin_min * FEE_RESERVE_PERCENT
+                
+                # First check if amount is above 2 sats to trigger webhook
+                if amount_sats > 2:
+                    # Get user's current balance
+                    balance = await get_bringin_wallet_balance(target.wallet)
+                    if balance is not None:
+                        await trigger_bringin_webhook(target.wallet, balance)
+                
+                # Then check if amount is within Bringin limits for offramp
                 if bringin_min - fee_reserve_amount <= amount_sats <= bringin_max:
                     payment_request = await offramp(target.wallet, amount_sats)
                 else:
@@ -203,3 +212,66 @@ async def get_lnurl_invoice(
         return None
 
     return params["pr"]
+
+async def trigger_bringin_webhook(lightning_address: str, balance: int):
+    webhook_url = "https://app.bringin.xyz/hooks/opago/payments"
+    username = lightning_address.split("@")[0]
+    
+    payload = {
+        "username": username,
+        "balance": balance
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(webhook_url, json=payload)
+            response.raise_for_status()
+            logger.info(f"Bringin webhook triggered successfully for {username}")
+        except Exception as e:
+            logger.error(f"Failed to trigger Bringin webhook: {str(e)}")
+
+# Add this new function to get wallet balance
+async def get_bringin_wallet_balance(lightning_address: str) -> Optional[int]:
+    base_url = "https://bringin.opago-pay.com"
+    admin_key = os.environ['OPAGO_KEY']
+    
+    # First get the user's wallet info
+    headers = {"X-Api-Key": admin_key}
+    async with httpx.AsyncClient() as client:
+        try:
+            # Get user info to find their wallet
+            users_response = await client.get(
+                f"{base_url}/usermanager/api/v1/users", 
+                headers=headers
+            )
+            users_response.raise_for_status()
+            users = [u for u in users_response.json() if u["email"] == lightning_address]
+            if not users:
+                logger.error(f"No user found for {lightning_address}")
+                return None
+                
+            # Get user's wallet
+            wallets_response = await client.get(
+                f"{base_url}/usermanager/api/v1/wallets", 
+                headers=headers
+            )
+            wallets_response.raise_for_status()
+            user_wallet = next(
+                (w for w in wallets_response.json() if w["user"] == users[0]["id"]), 
+                None
+            )
+            if not user_wallet:
+                logger.error(f"No wallet found for user {lightning_address}")
+                return None
+
+            # Get wallet balance using the wallet's admin key
+            balance_response = await client.get(
+                f"{base_url}/api/v1/wallet",
+                headers={"X-Api-Key": user_wallet["adminkey"]}
+            )
+            balance_response.raise_for_status()
+            return balance_response.json()["balance"]
+
+        except Exception as e:
+            logger.error(f"Failed to get wallet balance: {str(e)}")
+            return None
