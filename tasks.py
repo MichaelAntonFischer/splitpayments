@@ -14,6 +14,7 @@ from lnbits.core.services import create_invoice, fee_reserve, pay_invoice
 from lnbits.helpers import get_current_extension_name
 from lnbits.tasks import register_invoice_listener
 from .bringin import offramp
+from lnbits.core.crud.wallets import get_wallet_for_key
 
 from .crud import get_targets
 
@@ -85,9 +86,12 @@ async def on_invoice_paid(payment: Payment) -> None:
                     target.wallet, payment.wallet_id, safe_amount_msat, memo
                 )
             else:
-                logger.info(f"Internal payment: {target.wallet}")
+                # Key-based wallet resolution (backwards compatible)
+                wallet = await get_wallet_for_key(target.wallet)
+                wallet_id_to_use = wallet.id if wallet is not None else target.wallet
+                logger.info(f"Internal payment: {wallet_id_to_use}")
                 _, payment_request = await create_invoice(
-                    wallet_id=target.wallet,
+                    wallet_id=wallet_id_to_use,
                     amount=int(amount_msat / 1000),
                     internal=True,
                     memo=memo,
@@ -147,8 +151,11 @@ async def execute_split(wallet_id, amount):
                     target.wallet, wallet_id, amount_msat, memo
                 )
             else:
+                # Key-based wallet resolution (backwards compatible)
+                wallet = await get_wallet_for_key(target.wallet)
+                wallet_id_to_use = wallet.id if wallet is not None else target.wallet
                 _, payment_request = await create_invoice(
-                    wallet_id=target.wallet,
+                    wallet_id=wallet_id_to_use,
                     amount=int(amount_msat / 1000),
                     internal=True,
                     memo=memo,
