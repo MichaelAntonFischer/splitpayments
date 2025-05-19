@@ -23,7 +23,7 @@ FEE_RESERVE_PERCENT = 0.001  # 0.1%
 
 async def wait_for_paid_invoices():
     invoice_queue = asyncio.Queue()
-    register_invoice_listener(invoice_queue, get_current_extension_name())
+    register_invoice_listener(invoice_queue, "ext_splitpayments_invoice_listener")
 
     while True:
         payment = await invoice_queue.get()
@@ -90,12 +90,13 @@ async def on_invoice_paid(payment: Payment) -> None:
                 wallet = await get_wallet_for_key(target.wallet)
                 wallet_id_to_use = wallet.id if wallet is not None else target.wallet
                 logger.info(f"Internal payment: {wallet_id_to_use}")
-                _, payment_request = await create_invoice(
+                new_payment = await create_invoice(
                     wallet_id=wallet_id_to_use,
                     amount=int(amount_msat / 1000),
                     internal=True,
                     memo=memo,
                 )
+                payment_request = new_payment.bolt11
 
             extra = {**payment.extra, "tag": "splitpayments", "splitted": True}
 
@@ -154,12 +155,13 @@ async def execute_split(wallet_id, amount):
                 # Key-based wallet resolution (backwards compatible)
                 wallet = await get_wallet_for_key(target.wallet)
                 wallet_id_to_use = wallet.id if wallet is not None else target.wallet
-                _, payment_request = await create_invoice(
+                new_payment = await create_invoice(
                     wallet_id=wallet_id_to_use,
                     amount=int(amount_msat / 1000),
                     internal=True,
                     memo=memo,
                 )
+                payment_request = new_payment.bolt11
 
             extra = {"tag": "splitpayments", "splitted": True}
 
