@@ -6,6 +6,13 @@ import json
 import hmac
 import hashlib
 
+# Default standard API base and prefix (no /upgrades/)
+DEFAULT_API_BASE = "https://devbringin.opago-pay.com/splitpayments/api/v1"
+DEFAULT_API_PREFIX = "/splitpayments/api/v1"
+
+API_BASE = os.environ.get("API_BASE", DEFAULT_API_BASE)
+API_PREFIX = os.environ.get("API_PREFIX", DEFAULT_API_PREFIX)
+
 def generate_hmac_authorization(secret, method, path, body, timestamp=None):
     if timestamp is None:
         timestamp = str(int(time.time() * 1000))
@@ -48,8 +55,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Get API base URL and keys from env
-    api_base = os.environ.get("API_BASE", "http://localhost:5000/splitpayments/api/v1")
     opago_key = os.environ.get("OPAGO_KEY")
     bringin_secret = os.environ.get("BRINGIN_SECRET")
     if not opago_key or not bringin_secret:
@@ -59,12 +64,11 @@ def main():
     session = requests.Session()
 
     if args.command == "create":
-        url = f"{api_base}/add_bringin_user"
+        url = f"{API_BASE}/add_bringin_user"
         body = {
             "lightning_address": args.lnaddress
         }
-        # Path must match exactly as in FastAPI route
-        path = "/splitpayments/api/v1/add_bringin_user"
+        path = f"{API_PREFIX}/add_bringin_user"
         method = "POST"
         signature = generate_hmac_authorization(bringin_secret, method, path, body)
         headers = {
@@ -77,12 +81,12 @@ def main():
         print("Response:", resp.text)
 
     elif args.command == "update":
-        url = f"{api_base}/update_bringin_user"
+        url = f"{API_BASE}/update_bringin_user"
         body = {
             "old_lightning_address": args.old_lnaddress,
             "new_lightning_address": args.new_lnaddress
         }
-        path = "/splitpayments/api/v1/update_bringin_user"
+        path = f"{API_PREFIX}/update_bringin_user"
         method = "POST"
         signature = generate_hmac_authorization(bringin_secret, method, path, body)
         headers = {
@@ -96,8 +100,8 @@ def main():
 
     elif args.command == "audit_one":
         lnaddress = args.lnaddress
-        url = f"{api_base}/bringin_audit?lnaddress={lnaddress}&include_transactions=true"
-        path = "/splitpayments/api/v1/bringin_audit"
+        url = f"{API_BASE}/bringin_audit?lnaddress={lnaddress}&include_transactions=true"
+        path = f"{API_PREFIX}/bringin_audit"
         method = "GET"
         signature = generate_hmac_authorization(bringin_secret, method, path, {})
         headers = {
@@ -109,8 +113,8 @@ def main():
         print("Response:", resp.text)
 
     elif args.command == "audit_all":
-        url = f"{api_base}/bringin_audit?include_transactions=true"
-        path = "/splitpayments/api/v1/bringin_audit"
+        url = f"{API_BASE}/bringin_audit?include_transactions=true"
+        path = f"{API_PREFIX}/bringin_audit"
         method = "GET"
         signature = generate_hmac_authorization(bringin_secret, method, path, {})
         headers = {
