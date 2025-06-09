@@ -295,13 +295,21 @@ async def delete_user(user_id: str):
         if response.status_code != 200:
             raise Exception(f"Failed to delete user: {response.text}")
 
-async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
+async def create_lnurlp_link(lightning_address: str, admin_key: str, user_id: str = None, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
-    # LNURLP plugin still uses X-Api-Key authentication in LNbits v1.1.0
-    headers = {
-        "X-Api-Key": admin_key,
-        "Content-Type": "application/json"
-    }
+    
+    # In LNbits v1.1.0, LNURLP operations need OAuth with user context if extension was enabled for user
+    if user_id:
+        # Use OAuth with user context for extension-enabled operations
+        headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+        if user_id:
+            url += f"?usr={user_id}"
+    else:
+        # Fallback to X-Api-Key for backward compatibility
+        headers = {
+            "X-Api-Key": admin_key,
+            "Content-Type": "application/json"
+        }
     
     # Extract username from lightning address for LNURLP creation
     # This defines the lightning address: username@domain.com
@@ -458,7 +466,7 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             await activate_extensions(user_id, ["splitpayments", "lnurlp"])
             logger.info("Extensions activated")
             logger.info("Creating LNURLp link")
-            lnurl = await create_lnurlp_link(lightning_address, admin_key)
+            lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
             logger.info("Setting targets for the wallet")
             target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
@@ -546,8 +554,8 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
             await delete_lnurlp_link(old_lnurl_id, wallet_admin_key)
             logger.info(f"✅ Deleted old LNURLP link: {old_lnurl_id}")
         
-        # Create new LNURLP link
-        new_lnurl = await create_lnurlp_link(new_lightning_address, wallet_admin_key)
+        # Create new LNURLP link (use user context for extension compatibility)
+        new_lnurl = await create_lnurlp_link(new_lightning_address, wallet_admin_key, user_id)
         logger.info(f"✅ Created new LNURLP link: {new_lnurl}")
         
         # Step 3: Update split targets (replace old lightning address with new one)
