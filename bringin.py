@@ -35,6 +35,12 @@ async def get_oauth_token(admin_key: str, base_url: str = "https://bringin.opago
     opago_user = os.environ.get('OPAGO_USER')
     opago_pwd = os.environ.get('OPAGO_PWD')
     
+    # Strip quotes from environment variables (common issue with Docker compose)
+    if opago_user:
+        opago_user = opago_user.strip('"\'')
+    if opago_pwd:
+        opago_pwd = opago_pwd.strip('"\'')
+    
     if not opago_user or not opago_pwd:
         logger.error("OPAGO_USER and OPAGO_PWD environment variables are required for LNbits v1.1.0 authentication")
         # Fallback to admin key as Bearer token
