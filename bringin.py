@@ -298,14 +298,17 @@ async def delete_user(user_id: str):
 async def create_lnurlp_link(lightning_address: str, admin_key: str, user_id: str = None, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
     
-    # In LNbits v1.1.0, LNURLP operations need OAuth with user context if extension was enabled for user
+    # LNURLP plugin requires X-Api-Key authentication even when extension is enabled via OAuth
+    # Use superuser admin key when operating on user-enabled extensions
     if user_id:
-        # Use OAuth with user context for extension-enabled operations
-        headers = await get_auth_headers(os.environ['OPAGO_KEY'])
-        if user_id:
-            url += f"?usr={user_id}"
+        # Use superuser admin key for user-enabled extensions
+        headers = {
+            "X-Api-Key": os.environ['OPAGO_KEY'],
+            "Content-Type": "application/json"
+        }
+        url += f"?usr={user_id}"
     else:
-        # Fallback to X-Api-Key for backward compatibility
+        # Use provided admin key for direct wallet operations
         headers = {
             "X-Api-Key": admin_key,
             "Content-Type": "application/json"
@@ -343,10 +346,11 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, user_id: st
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-async def delete_lnurlp_link(pay_id: str, admin_key: str):
-    # LNURLP plugin still uses X-Api-Key authentication in LNbits v1.1.0
+async def delete_lnurlp_link(pay_id: str, admin_key: str, use_superuser: bool = False):
+    # LNURLP plugin uses X-Api-Key authentication in LNbits v1.1.0
+    # Use superuser key for user-enabled extensions
     headers = {
-        "X-Api-Key": admin_key,
+        "X-Api-Key": os.environ['OPAGO_KEY'] if use_superuser else admin_key,
         "Content-Type": "application/json"
     }
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
@@ -541,17 +545,17 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
         logger.info(f"✅ Updated user {user_id} email: {old_lightning_address} -> {new_lightning_address}")
         
         # Step 2: Update LNURLP link
-        # Delete old LNURLP link (LNURLP plugin still uses X-Api-Key authentication)
+        # Delete old LNURLP link (use superuser key for user-enabled extensions)
         lnurlp_headers = {
-            "X-Api-Key": wallet_admin_key,
+            "X-Api-Key": os.environ['OPAGO_KEY'],
             "Content-Type": "application/json"
         }
-        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=lnurlp_headers)
+        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?usr={user_id}", headers=lnurlp_headers)
         old_lnurl_response.raise_for_status()
         old_lnurl_data = old_lnurl_response.json()
         if old_lnurl_data:
             old_lnurl_id = old_lnurl_data[0]["id"]
-            await delete_lnurlp_link(old_lnurl_id, wallet_admin_key)
+            await delete_lnurlp_link(old_lnurl_id, wallet_admin_key, use_superuser=True)
             logger.info(f"✅ Deleted old LNURLP link: {old_lnurl_id}")
         
         # Create new LNURLP link (use user context for extension compatibility)
@@ -601,13 +605,13 @@ async def cleanup_resources(lnurl, user_id, admin_key):
     base_url = "https://bringin.opago-pay.com"
     try:
         if lnurl:
-            # Fetch the list of payment links using the admin key (LNURLP plugin still uses X-Api-Key)
+            # Fetch the list of payment links using superuser key for user-enabled extensions
             lnurlp_headers = {
-                "X-Api-Key": admin_key,
+                "X-Api-Key": os.environ['OPAGO_KEY'],
                 "Content-Type": "application/json"
             }
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers=lnurlp_headers)
+                response = await client.get(f"{base_url}/lnurlp/api/v1/links?usr={user_id}", headers=lnurlp_headers)
                 response.raise_for_status()
                 pay_links = response.json()
 
@@ -620,7 +624,7 @@ async def cleanup_resources(lnurl, user_id, admin_key):
 
             if pay_id:
                 logger.info(f"Deleting LNURLp link: {pay_id}")
-                await delete_lnurlp_link(pay_id, admin_key)
+                await delete_lnurlp_link(pay_id, admin_key, use_superuser=True)
                 logger.info("LNURLp link deleted")
             else:
                 logger.warning(f"No matching payment link found for lnurl: {lnurl}")
