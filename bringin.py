@@ -280,6 +280,9 @@ async def delete_user(user_id: str):
 async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
     headers = await get_auth_headers(admin_key)
+    
+    # Extract username from lightning address for LNURLP creation
+    # This defines the lightning address: username@domain.com
     username = lightning_address.split("@")[0]
     
     if bringin_max is None:
@@ -292,7 +295,7 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
         "max": bringin_max,
         "min": 1,
         "comment_chars": 210,
-        "username": username
+        "username": username  # This sets the lightning address part before @domain.com
     }
 
     try:
@@ -365,6 +368,38 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
                 audit_data.append(wallet_data)
         return audit_data
     
+async def generate_safe_username(lightning_address: str, existing_users: list = None) -> str:
+    """Generate a safe username that meets LNbits validation requirements and avoids collisions."""
+    raw_username = lightning_address.split("@")[0]
+    
+    # Clean username for LNbits validation: only alphanumeric, must start with letter
+    import re
+    clean_username = re.sub(r'[^a-zA-Z0-9]', '', raw_username)
+    
+    # Ensure it starts with letter and has minimum length
+    if not clean_username or not clean_username[0].isalpha():
+        clean_username = "user" + clean_username
+    if len(clean_username) < 3:
+        clean_username = f"user{clean_username}123"
+    
+    # Handle collisions by checking existing usernames
+    if existing_users:
+        existing_usernames = {user.get("username", "") for user in existing_users}
+        base_username = clean_username[:15]  # Leave room for collision suffix
+        counter = 1
+        final_username = base_username
+        
+        while final_username in existing_usernames:
+            final_username = f"{base_username}{counter}"
+            counter += 1
+            if len(final_username) > 20:  # LNbits username length limit
+                base_username = base_username[:12]  # Make more room
+                final_username = f"{base_username}{counter}"
+        
+        return final_username
+    
+    return clean_username[:20]  # Ensure max length compliance
+
 async def add_bringin_user(lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
     headers = await get_auth_headers(admin_key, base_url)
@@ -373,11 +408,15 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
         users_data = users_response.json().get("data", users_response.json())
+        
+        # Check if lightning address (email) already exists
         for user in users_data:
             if user["email"] == lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
+        
         admin_id = os.environ['OPAGO_ID']
-        user_name = lightning_address.split("@")[0]
+        # Generate safe username with collision detection
+        user_name = await generate_safe_username(lightning_address, users_data)
         wallet_name = "Offramp"
         user_id = None
         lnurl = None
@@ -422,7 +461,7 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
             if user["email"] == new_lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
         
-        # Find the user with the old lightning address
+        # Find the user with the old lightning address (email-based lookup)
         target_user = None
         for user in users_data:
             if user["email"] == old_lightning_address:
