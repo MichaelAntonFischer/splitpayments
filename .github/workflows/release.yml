@@ -169,8 +169,26 @@ jobs:
           # Read current extensions.json
           try:
               with open('extensions.json', 'r') as f:
-                  data = json.load(f)
+                  raw_data = json.load(f)
+              
+              print(f"Raw JSON type: {type(raw_data)}")
+              print(f"Raw JSON content: {raw_data}")
+              
+              # Handle different JSON structures
+              if isinstance(raw_data, list):
+                  data = raw_data
+              elif isinstance(raw_data, dict) and 'extensions' in raw_data:
+                  data = raw_data['extensions']
+              else:
+                  print("Unknown JSON structure, creating new list")
+                  data = []
+              
               print(f"Loaded {len(data)} existing extensions")
+              
+              # Debug: show types of first few items
+              for i, item in enumerate(data[:3]):
+                  print(f"Item {i} type: {type(item)}, content: {item}")
+              
           except Exception as e:
               print(f"Error reading extensions.json: {e}")
               sys.exit(1)
@@ -196,19 +214,42 @@ jobs:
             "hash": hash_value
           }
           
-          # Remove existing entries for this extension
+          # Ensure data is a list and contains only dictionaries
+          if not isinstance(data, list):
+              print(f"Error: data is not a list, it's {type(data)}")
+              sys.exit(1)
+          
+          # Filter with safety checks
           original_count = len(data)
-          data = [ext for ext in data if ext.get('id') != 'splitpayments']
+          safe_data = []
+          for ext in data:
+              if isinstance(ext, dict):
+                  if ext.get('id') != 'splitpayments':
+                      safe_data.append(ext)
+              else:
+                  print(f"Warning: skipping non-dict item: {ext}")
+          
+          data = safe_data
           removed_count = original_count - len(data)
           print(f"Removed {removed_count} existing splitpayments entries")
           
           if is_rc:
               # For RC versions, remove other RC versions of the same clean version
+              # Since we already removed all splitpayments entries, we need to check all extensions again
               before_rc_cleanup = len(data)
-              data = [ext for ext in data if not (
-                  ext.get('id') == 'splitpayments' and 
-                  ext.get('version', '').startswith(clean_version + '-rc')
-              )]
+              safe_data = []
+              for ext in data:
+                  if isinstance(ext, dict):
+                      # Keep all non-splitpayments entries
+                      if ext.get('id') != 'splitpayments':
+                          safe_data.append(ext)
+                      # For splitpayments entries, only keep if not an RC of the same clean version
+                      elif not ext.get('version', '').startswith(clean_version + '-rc'):
+                          safe_data.append(ext)
+                  else:
+                      print(f"Warning: skipping non-dict item during RC cleanup: {ext}")
+              
+              data = safe_data
               rc_removed = before_rc_cleanup - len(data)
               print(f"Removed {rc_removed} other RC versions for {clean_version}")
           
@@ -216,7 +257,7 @@ jobs:
           data.append(new_entry)
           
           # Sort by extension id for consistency
-          data.sort(key=lambda x: x.get('id', ''))
+          data.sort(key=lambda x: x.get('id', '') if isinstance(x, dict) else '')
           
           # Write back to extensions.json
           try:
