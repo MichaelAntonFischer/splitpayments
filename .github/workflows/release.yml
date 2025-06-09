@@ -173,18 +173,24 @@ jobs:
                   raw_data = json.load(f)
               
               print(f"Raw JSON type: {type(raw_data)}")
-              print(f"Raw JSON content: {raw_data}")
               
-              # Handle different JSON structures
-              if isinstance(raw_data, list):
-                  data = raw_data
-              elif isinstance(raw_data, dict) and 'extensions' in raw_data:
+              # Handle different JSON structures - LNbits expects {"featured": [...], "extensions": [...]}
+              if isinstance(raw_data, dict) and 'extensions' in raw_data:
                   data = raw_data['extensions']
+                  featured = raw_data.get('featured', [])
+                  print("Found correct dict structure with 'extensions' key")
+              elif isinstance(raw_data, list):
+                  # Convert old list format to new dict format
+                  data = raw_data
+                  featured = []
+                  print("Found list structure, will convert to dict format")
               else:
                   print("Unknown JSON structure, creating new list")
                   data = []
+                  featured = []
               
               print(f"Loaded {len(data)} existing extensions")
+              print(f"Featured extensions: {featured}")
               
               # Debug: show types of first few items
               for i, item in enumerate(data[:3]):
@@ -268,12 +274,19 @@ jobs:
           # Sort by extension id for consistency
           data.sort(key=lambda x: x.get('id', '') if isinstance(x, dict) else '')
           
-          # Write back to extensions.json
+          # Write back to extensions.json in correct format
           try:
+              # LNbits expects {"featured": [...], "extensions": [...]} format
+              output_data = {
+                  "featured": featured,
+                  "extensions": data
+              }
               with open('extensions.json', 'w') as f:
-                  json.dump(data, f, indent=2)
+                  json.dump(output_data, f, indent=2)
               print(f"Successfully updated extensions.json with version {version}")
               print(f"Total extensions: {len(data)}")
+              print(f"Featured extensions: {len(featured)}")
+              print("Output structure: dict with 'featured' and 'extensions' keys")
           except Exception as e:
               print(f"Error writing extensions.json: {e}")
               sys.exit(1)

@@ -1,0 +1,108 @@
+2025-06-09T09:36:38.384319+0200 | INFO | OPAGO_KEY loaded from pass
+2025-06-09T09:36:38.545782+0200 | INFO | BRINGIN_SECRET loaded from pass
+2025-06-09T09:36:38.546011+0200 | INFO | Base URL: https://bringin.opago-pay.com/splitpayments/api/v1
+2025-06-09T09:36:38.546069+0200 | INFO | API Prefix: /splitpayments/api/v1
+2025-06-09T09:36:38.546130+0200 | INFO | 
+=== Bringin Audit (with transactions) ===
+2025-06-09T09:36:38.546170+0200 | INFO | URL: https://bringin.opago-pay.com/splitpayments/api/v1/bringin_audit
+2025-06-09T09:36:38.546209+0200 | INFO | Method: GET
+2025-06-09T09:36:38.546244+0200 | INFO | Path for HMAC: /splitpayments/api/v1/bringin_audit
+2025-06-09T09:36:38.546286+0200 | DEBUG | HMAC Generation:
+2025-06-09T09:36:38.546323+0200 | DEBUG |   Secret: "TDJyQllIWlJmVXByb0hzZnJGN0Y0QXJRNW1pN1FFUHZ6N0F3VFAzVFduenZFemFuQkc4Qw=="
+2025-06-09T09:36:38.546358+0200 | DEBUG |   Method: GET
+2025-06-09T09:36:38.546391+0200 | DEBUG |   Path: /splitpayments/api/v1/bringin_audit
+2025-06-09T09:36:38.546424+0200 | DEBUG |   Body string: {}
+2025-06-09T09:36:38.546455+0200 | DEBUG |   Timestamp: 1749454598546
+2025-06-09T09:36:38.546490+0200 | DEBUG |   Body bytes (hex): 7b7d
+2025-06-09T09:36:38.546557+0200 | DEBUG |   MD5 hash: 99914b932bd37a50b983c5e7c90ae93b
+2025-06-09T09:36:38.546591+0200 | DEBUG |   Raw data for HMAC: 1749454598546GET/splitpayments/api/v1/bringin_audit99914b932bd37a50b983c5e7c90ae93b
+2025-06-09T09:36:38.546670+0200 | DEBUG |   Generated HMAC: HMAC 1749454598546:de1c86e4cd883fafc94db6b33e1a7da065d4f0a7b225798560b6a954bd329de6
+2025-06-09T09:36:38.546714+0200 | INFO | Headers: {'Authorization': 'HMAC 1749454598546:de1c86e4cd883fafc94db6b33e1a7da065d4f0a7b225798560b6a954bd329de6', 'X-Api-Key': '14a7acb4d0174f6f9f387aceda7f8929', 'Content-Type': 'application/json'}
+2025-06-09T09:36:38.546750+0200 | INFO | Params: {'include_transactions': 'true'}
+2025-06-09T09:36:38.740765+0200 | INFO | Status Code: 401
+2025-06-09T09:36:38.740973+0200 | INFO | Response Headers: {'alt-svc': 'h3=":443"; ma=2592000', 'content-length': '30', 'content-type': 'application/json', 'date': 'Mon, 09 Jun 2025 07:36:38 GMT', 'server': 'Caddy, uvicorn'}
+2025-06-09T09:36:38.741083+0200 | INFO | Response JSON: {
+  "detail": "Invalid signature"
+}
+2025-06-09T09:36:49.196750+0200 | INFO | OPAGO_KEY loaded from pass
+2025-06-09T09:36:49.366197+0200 | INFO | BRINGIN_SECRET loaded from pass
+2025-06-09T09:36:49.366408+0200 | INFO | Base URL: https://bringin.opago-pay.com/splitpayments/api/v1
+2025-06-09T09:36:49.366455+0200 | INFO | API Prefix: /splitpayments/api/v1
+2025-06-09T09:36:49.366496+0200 | INFO | 
+=== Add Bringin User: test@example.com ===
+2025-06-09T09:36:49.366527+0200 | INFO | URL: https://bringin.opago-pay.com/splitpayments/api/v1/add_bringin_user
+2025-06-09T09:36:49.366552+0200 | INFO | Method: POST
+2025-06-09T09:36:49.366578+0200 | INFO | Path for HMAC: /splitpayments/api/v1/add_bringin_user
+2025-06-09T09:36:49.366641+0200 | DEBUG | HMAC Generation:
+2025-06-09T09:36:49.366669+0200 | DEBUG |   Secret: "TDJyQllIWlJmVXByb0hzZnJGN0Y0QXJRNW1pN1FFUHZ6N0F3VFAzVFduenZFemFuQkc4Qw=="
+2025-06-09T09:36:49.366695+0200 | DEBUG |   Method: POST
+2025-06-09T09:36:49.366717+0200 | DEBUG |   Path: /splitpayments/api/v1/add_bringin_user
+2025-06-09T09:36:49.366742+0200 | DEBUG |   Body string: {"lightning_address":"test@example.com"}
+2025-06-09T09:36:49.366768+0200 | DEBUG |   Timestamp: 1749454609366
+2025-06-09T09:36:49.366794+0200 | DEBUG |   Body bytes (hex): 7b226c696768746e696e675f61646472657373223a2274657374406578616d706c652e636f6d227d
+2025-06-09T09:36:49.366845+0200 | DEBUG |   MD5 hash: e6d78958e3c5475d520db86bc88c090c
+2025-06-09T09:36:49.366882+0200 | DEBUG |   Raw data for HMAC: 1749454609366POST/splitpayments/api/v1/add_bringin_usere6d78958e3c5475d520db86bc88c090c
+2025-06-09T09:36:49.366933+0200 | DEBUG |   Generated HMAC: HMAC 1749454609366:997745e397344d4e071b9dda394d382a0270a1adc048e82610c426fc0ad6d7cb
+2025-06-09T09:36:49.366963+0200 | INFO | Headers: {'Authorization': 'HMAC 1749454609366:997745e397344d4e071b9dda394d382a0270a1adc048e82610c426fc0ad6d7cb', 'X-Api-Key': '14a7acb4d0174f6f9f387aceda7f8929', 'Content-Type': 'application/json'}
+2025-06-09T09:36:49.367010+0200 | INFO | Body: {
+  "lightning_address": "test@example.com"
+}
+2025-06-09T09:36:49.511713+0200 | INFO | Status Code: 401
+2025-06-09T09:36:49.511862+0200 | INFO | Response Headers: {'alt-svc': 'h3=":443"; ma=2592000', 'content-length': '30', 'content-type': 'application/json', 'date': 'Mon, 09 Jun 2025 07:36:49 GMT', 'server': 'Caddy, uvicorn'}
+2025-06-09T09:36:49.511951+0200 | INFO | Response JSON: {
+  "detail": "Invalid signature"
+}
+2025-06-09T09:39:49.348992+0200 | INFO | OPAGO_KEY loaded from pass
+2025-06-09T09:39:49.525308+0200 | INFO | BRINGIN_SECRET loaded from pass
+2025-06-09T09:39:49.525569+0200 | INFO | Base URL: https://bringin.opago-pay.com/splitpayments/api/v1
+2025-06-09T09:39:49.525615+0200 | INFO | API Prefix: /splitpayments/api/v1
+2025-06-09T09:39:49.525660+0200 | INFO | 
+=== Bringin Audit (with transactions) ===
+2025-06-09T09:39:49.525691+0200 | INFO | URL: https://bringin.opago-pay.com/splitpayments/api/v1/bringin_audit
+2025-06-09T09:39:49.525716+0200 | INFO | Method: GET
+2025-06-09T09:39:49.525738+0200 | INFO | Path for HMAC: /splitpayments/api/v1/bringin_audit
+2025-06-09T09:39:49.525773+0200 | DEBUG | HMAC Generation:
+2025-06-09T09:39:49.525799+0200 | DEBUG |   Secret: "TDJyQllIWlJmVXByb0hzZnJGN0Y0QXJRNW1pN1FFUHZ6N0F3VFAzVFduenZFemFuQkc4Qw=="
+2025-06-09T09:39:49.525875+0200 | DEBUG |   Method: GET
+2025-06-09T09:39:49.525974+0200 | DEBUG |   Path: /splitpayments/api/v1/bringin_audit
+2025-06-09T09:39:49.526131+0200 | DEBUG |   Body string: {}
+2025-06-09T09:39:49.526166+0200 | DEBUG |   Timestamp: 1749454789525
+2025-06-09T09:39:49.526197+0200 | DEBUG |   Body bytes (hex): 7b7d
+2025-06-09T09:39:49.526272+0200 | DEBUG |   MD5 hash: 99914b932bd37a50b983c5e7c90ae93b
+2025-06-09T09:39:49.526301+0200 | DEBUG |   Raw data for HMAC: 1749454789525GET/splitpayments/api/v1/bringin_audit99914b932bd37a50b983c5e7c90ae93b
+2025-06-09T09:39:49.526470+0200 | DEBUG |   Generated HMAC: HMAC 1749454789525:7b9cb1f804599c981c846d278532adfd0e7abe8bfe1e23534d651e56eccb7ef9
+2025-06-09T09:39:49.526541+0200 | INFO | Headers: {'Authorization': 'HMAC 1749454789525:7b9cb1f804599c981c846d278532adfd0e7abe8bfe1e23534d651e56eccb7ef9', 'X-Api-Key': '14a7acb4d0174f6f9f387aceda7f8929', 'Content-Type': 'application/json'}
+2025-06-09T09:39:49.526577+0200 | INFO | Params: {'include_transactions': 'true'}
+2025-06-09T09:39:49.737404+0200 | INFO | Status Code: 500
+2025-06-09T09:39:49.737572+0200 | INFO | Response Headers: {'alt-svc': 'h3=":443"; ma=2592000', 'content-length': '192', 'content-type': 'application/json', 'date': 'Mon, 09 Jun 2025 07:39:49 GMT', 'server': 'Caddy, uvicorn'}
+2025-06-09T09:39:49.737655+0200 | INFO | Response JSON: {
+  "detail": "Client error '401 Unauthorized' for url 'https://bringin.opago-pay.com/users/api/v1/user'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401"
+}
+2025-06-09T09:40:16.420219+0200 | INFO | OPAGO_KEY loaded from pass
+2025-06-09T09:40:16.581713+0200 | INFO | BRINGIN_SECRET loaded from pass
+2025-06-09T09:40:16.581945+0200 | INFO | Base URL: https://bringin.opago-pay.com/splitpayments/api/v1
+2025-06-09T09:40:16.582001+0200 | INFO | API Prefix: /splitpayments/api/v1
+2025-06-09T09:40:16.582063+0200 | INFO | 
+=== Add Bringin User: test@example.com ===
+2025-06-09T09:40:16.582101+0200 | INFO | URL: https://bringin.opago-pay.com/splitpayments/api/v1/add_bringin_user
+2025-06-09T09:40:16.582136+0200 | INFO | Method: POST
+2025-06-09T09:40:16.582173+0200 | INFO | Path for HMAC: /splitpayments/api/v1/add_bringin_user
+2025-06-09T09:40:16.582254+0200 | DEBUG | HMAC Generation:
+2025-06-09T09:40:16.582293+0200 | DEBUG |   Secret: "TDJyQllIWlJmVXByb0hzZnJGN0Y0QXJRNW1pN1FFUHZ6N0F3VFAzVFduenZFemFuQkc4Qw=="
+2025-06-09T09:40:16.582328+0200 | DEBUG |   Method: POST
+2025-06-09T09:40:16.582357+0200 | DEBUG |   Path: /splitpayments/api/v1/add_bringin_user
+2025-06-09T09:40:16.582391+0200 | DEBUG |   Body string: {"lightning_address":"test@example.com"}
+2025-06-09T09:40:16.582421+0200 | DEBUG |   Timestamp: 1749454816582
+2025-06-09T09:40:16.582463+0200 | DEBUG |   Body bytes (hex): 7b226c696768746e696e675f61646472657373223a2274657374406578616d706c652e636f6d227d
+2025-06-09T09:40:16.582517+0200 | DEBUG |   MD5 hash: e6d78958e3c5475d520db86bc88c090c
+2025-06-09T09:40:16.582552+0200 | DEBUG |   Raw data for HMAC: 1749454816582POST/splitpayments/api/v1/add_bringin_usere6d78958e3c5475d520db86bc88c090c
+2025-06-09T09:40:16.582613+0200 | DEBUG |   Generated HMAC: HMAC 1749454816582:a766075c2b5ad1af0ec7217431e2326084b0bbf37be92b1c4ee5fa5139a75ee6
+2025-06-09T09:40:16.582652+0200 | INFO | Headers: {'Authorization': 'HMAC 1749454816582:a766075c2b5ad1af0ec7217431e2326084b0bbf37be92b1c4ee5fa5139a75ee6', 'X-Api-Key': '14a7acb4d0174f6f9f387aceda7f8929', 'Content-Type': 'application/json'}
+2025-06-09T09:40:16.582701+0200 | INFO | Body: {
+  "lightning_address": "test@example.com"
+}
+2025-06-09T09:40:16.803611+0200 | INFO | Status Code: 500
+2025-06-09T09:40:16.803854+0200 | INFO | Response Headers: {'alt-svc': 'h3=":443"; ma=2592000', 'content-length': '192', 'content-type': 'application/json', 'date': 'Mon, 09 Jun 2025 07:40:16 GMT', 'server': 'Caddy, uvicorn'}
+2025-06-09T09:40:16.803986+0200 | INFO | Response JSON: {
+  "detail": "Client error '401 Unauthorized' for url 'https://bringin.opago-pay.com/users/api/v1/user'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401"
+}
