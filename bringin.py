@@ -356,8 +356,8 @@ async def delete_lnurlp_link(pay_id: str, admin_key: str, use_superuser: bool = 
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
-        if response.status_code != 204:
-            raise Exception(f"Failed to delete LNURLp link: {response.text}")
+        response.raise_for_status()  # This will handle 200 OK responses properly
+        # Note: LNbits returns 200 with {"success":true} instead of 204
 
 
 async def get_bringin_audit_data(admin_key: str, include_transactions: bool = False, lnaddress: str = None):
@@ -473,7 +473,7 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
             logger.info("Setting targets for the wallet")
-            target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
+            target = Target(id=None, source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
             await set_targets(wallet_id, [target])
             logger.info("Targets set")
             return {"lnurl": lnurl}
