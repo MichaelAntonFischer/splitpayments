@@ -37,35 +37,36 @@ def get_pass_secret(secret_path: str) -> str:
         raise ValueError("'pass' command not found. Please install pass password manager.")
 
 class APITester:
-    def __init__(self, base_url: str = None, api_prefix: str = None):
-        self.base_url = base_url or os.environ.get("API_BASE", "https://bringin.opago-pay.com/splitpayments/api/v1")
-        self.api_prefix = api_prefix or os.environ.get("API_PREFIX", "/splitpayments/api/v1")
+    def __init__(self):
+        # Load secrets from pass or environment variables
+        self.opago_key = self._load_secret_from_pass_or_env("bringin/OPAGO_KEY", "OPAGO_KEY")
+        self.bringin_secret = self._load_secret_from_pass_or_env("bringin/BRINGIN_SECRET", "BRINGIN_SECRET")
         
-        # Try to get secrets from pass first, fallback to environment variables
-        try:
-            self.opago_key = get_pass_secret("bringin/OPAGO_KEY")
-            logger.info("OPAGO_KEY loaded from pass")
-        except ValueError:
-            self.opago_key = os.environ.get("OPAGO_KEY")
-            if self.opago_key:
-                logger.info("OPAGO_KEY loaded from environment variable")
+        # Generate unique test addresses with timestamp
+        timestamp = str(int(time.time()))
+        self.test_address = f"test-{timestamp}@bringin.xyz"
+        self.new_test_address = f"new-test-{timestamp}@bringin.xyz"
         
-        try:
-            self.bringin_secret = get_pass_secret("bringin/BRINGIN_SECRET")
-            logger.info("BRINGIN_SECRET loaded from pass")
-        except ValueError:
-            self.bringin_secret = os.environ.get("BRINGIN_SECRET")
-            if self.bringin_secret:
-                logger.info("BRINGIN_SECRET loaded from environment variable")
-        
-        if not self.opago_key:
-            raise ValueError("OPAGO_KEY not found in pass (bringin/OPAGO_KEY) or environment variables")
-        if not self.bringin_secret:
-            raise ValueError("BRINGIN_SECRET not found in pass (bringin/BRINGIN_SECRET) or environment variables")
+        self.base_url = "https://bringin.opago-pay.com/splitpayments/api/v1"
+        self.api_prefix = "/splitpayments/api/v1"
         
         logger.info(f"Base URL: {self.base_url}")
         logger.info(f"API Prefix: {self.api_prefix}")
         
+    def _load_secret_from_pass_or_env(self, pass_path: str, env_var: str) -> str:
+        """Load secret from pass or environment variable."""
+        try:
+            secret = get_pass_secret(pass_path)
+            logger.info(f"{env_var} loaded from pass")
+            return secret
+        except ValueError:
+            secret = os.environ.get(env_var)
+            if secret:
+                logger.info(f"{env_var} loaded from environment variable")
+                return secret
+            else:
+                raise ValueError(f"{env_var} not found in pass ({pass_path}) or environment variables")
+
     def generate_hmac_authorization(self, method: str, path: str, body: Dict[str, Any] = None, timestamp: int = None) -> str:
         """Generate HMAC authorization header matching the server-side implementation."""
         if timestamp is None:
@@ -265,7 +266,7 @@ class APITester:
             description="Execute Split for All"
         )
     
-    async def run_comprehensive_test(self, test_lightning_address: str = None):
+    async def run_comprehensive_test(self):
         """Run comprehensive tests on all endpoints."""
         logger.info("Starting comprehensive API endpoint tests...")
         
@@ -290,15 +291,15 @@ class APITester:
         # Test audit endpoints
         results["audit_all"] = await self.test_bringin_audit()
         
-        if test_lightning_address:
-            results["audit_single"] = await self.test_bringin_audit(test_lightning_address)
-            results["add_user"] = await self.test_add_bringin_user(test_lightning_address)
-            
-            # Test update user (using same address for now)
-            results["update_user"] = await self.test_update_bringin_user(
-                test_lightning_address, 
-                test_lightning_address
-            )
+        # Use dynamic test addresses
+        results["audit_single"] = await self.test_bringin_audit(self.test_address)
+        results["add_user"] = await self.test_add_bringin_user(self.test_address)
+        
+        # Test update user (from test address to new test address)
+        results["update_user"] = await self.test_update_bringin_user(
+            self.test_address, 
+            self.new_test_address
+        )
         
         # Summary
         logger.info("\n" + "="*50)
@@ -340,7 +341,7 @@ async def main():
         logger.add(lambda msg: print(msg), level="DEBUG")
     
     try:
-        tester = APITester(args.base_url, args.api_prefix)
+        tester = APITester()
         
         if args.single_test:
             # Run single test
@@ -360,7 +361,7 @@ async def main():
             print(json.dumps(result, indent=2))
         else:
             # Run comprehensive test
-            await tester.run_comprehensive_test(args.test_address)
+            await tester.run_comprehensive_test()
             
     except Exception as e:
         logger.error(f"Test failed: {str(e)}")
