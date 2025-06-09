@@ -2,13 +2,16 @@ on:
   push:
     branches:
       - '*'
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
 
 jobs:
-  create_release:
+  static_release:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -61,4 +64,140 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  version_release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "::set-output name=version::$VERSION"
+          echo "::set-output name=is_rc::$(echo $VERSION | grep -q 'rc' && echo 'true' || echo 'false')"
+          echo "::set-output name=clean_version::$(echo $VERSION | sed 's/-rc[0-9]*$//')"
+
+      - name: Create version release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: Split Payments ${{ steps.get_version.outputs.version }}
+          body: |
+            Release ${{ steps.get_version.outputs.version }} of Split Payments extension for LNbits.
+            
+            Have payments split between multiple wallets automatically.
+          draft: false
+          prerelease: ${{ steps.get_version.outputs.is_rc }}
+
+      - name: Calculate SHA256 hash
+        id: calculate_hash
+        run: |
+          # Download the release archive
+          ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.zip"
+          wget -O release.zip "$ARCHIVE_URL"
+          
+          # Calculate SHA256 hash
+          HASH=$(sha256sum release.zip | cut -d' ' -f1)
+          echo "::set-output name=hash::$HASH"
+          echo "Archive URL: $ARCHIVE_URL"
+          echo "SHA256 Hash: $HASH"
+
+      - name: Update extensions.json
+        run: |
+          # Clone the extensions repository
+          git clone https://github.com/MichaelAntonFischer/lnbits-extensions.git extensions-repo
+          cd extensions-repo
+          
+          # Configure git
+          git config user.name "Cursor-MCP-MAF"
+          git config user.email "actions@github.com"
+          
+          # Prepare the new extension entry
+          VERSION="${{ steps.get_version.outputs.version }}"
+          IS_RC="${{ steps.get_version.outputs.is_rc }}"
+          CLEAN_VERSION="${{ steps.get_version.outputs.clean_version }}"
+          HASH="${{ steps.calculate_hash.outputs.hash }}"
+          ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/refs/tags/$VERSION.zip"
+          
+                     # Create the new extension entry
+           NEW_ENTRY=$(cat <<EOF
+           {
+             "id": "splitpayments",
+             "repo": "https://github.com/${{ github.repository }}",
+             "name": "Split Payments",
+             "version": "$VERSION",
+             "short_description": "Have payments split between multiple wallets automatically",
+             "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
+             "archive": "$ARCHIVE_URL",
+             "hash": "$HASH"
+           }
+           EOF
+           )
+          
+          # Update extensions.json using Python
+          python3 << 'EOF'
+          import json
+          import sys
+          
+          # Read current extensions.json
+          with open('extensions.json', 'r') as f:
+              data = json.load(f)
+          
+                     # Get the new entry details
+           new_entry = {
+             "id": "splitpayments",
+             "repo": "https://github.com/${{ github.repository }}",
+             "name": "Split Payments",
+             "version": "${{ steps.get_version.outputs.version }}",
+             "short_description": "Have payments split between multiple wallets automatically",
+             "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
+             "archive": "https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.zip",
+             "hash": "${{ steps.calculate_hash.outputs.hash }}"
+           }
+          
+          is_rc = "${{ steps.get_version.outputs.is_rc }}" == "true"
+          clean_version = "${{ steps.get_version.outputs.clean_version }}"
+          
+          # Remove existing entries for this extension
+          data = [ext for ext in data if ext.get('id') != 'splitpayments']
+          
+          if is_rc:
+              # For RC versions, remove other RC versions of the same clean version
+              # Keep only the latest RC for each clean version
+              data = [ext for ext in data if not (
+                  ext.get('id') == 'splitpayments' and 
+                  ext.get('version', '').startswith(clean_version + '-rc')
+              )]
+          
+          # Add the new entry
+          data.append(new_entry)
+          
+          # Sort by extension id for consistency
+          data.sort(key=lambda x: x.get('id', ''))
+          
+          # Write back to extensions.json
+          with open('extensions.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          
+          print(f"Updated extensions.json with version ${{ steps.get_version.outputs.version }}")
+          EOF
+          
+          # Check if there are changes to commit
+          if git diff --quiet extensions.json; then
+            echo "No changes to extensions.json"
+          else
+            # Commit and push changes
+            git add extensions.json
+            git commit -m "Update splitpayments extension to $VERSION (created by Cursor-MCP-MAF)"
+            git push https://${{ secrets.EXTENSIONS_REPO_TOKEN }}@github.com/MichaelAntonFischer/lnbits-extensions.git main
+            echo "Successfully updated extensions.json with version $VERSION"
+          fi
+        env:
+          EXTENSIONS_REPO_TOKEN: ${{ secrets.EXTENSIONS_REPO_TOKEN }}
 
