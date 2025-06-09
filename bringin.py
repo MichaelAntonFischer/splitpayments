@@ -343,19 +343,25 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
             wallets_data = wallets_response.json()
             for wallet in wallets_data:
                 wallet_id = wallet["id"]
-                balance_response = await client.get(f"{base_url}/api/v1/wallet/{wallet_id}", headers=headers)
-                balance_response.raise_for_status()
-                wallet_balance_data = balance_response.json()
+                # In LNbits v1.1.0, wallet balance is already in the wallet data
+                # No need for separate API call to get balance
                 wallet_data = {
                     "user_id": user_id,
                     "user_email": user["email"],
                     "wallet_id": wallet_id,
-                    "wallet_balance": wallet_balance_data.get("balance_msat", 0) // 1000
+                    "wallet_balance": wallet.get("balance_msat", 0) // 1000
                 }
                 if include_transactions:
-                    tx_response = await client.get(f"{base_url}/api/v1/payments?wallet_id={wallet_id}", headers=headers)
-                    tx_response.raise_for_status()
-                    wallet_data["transactions"] = tx_response.json()
+                    # Use the wallet's admin key for payments API instead of superuser OAuth
+                    wallet_admin_key = wallet.get("adminkey")
+                    if wallet_admin_key:
+                        # Create headers with wallet's admin key instead of OAuth
+                        wallet_headers = {"X-Api-Key": wallet_admin_key}
+                        tx_response = await client.get(f"{base_url}/api/v1/payments", headers=wallet_headers)
+                        tx_response.raise_for_status()
+                        wallet_data["transactions"] = tx_response.json()
+                    else:
+                        wallet_data["transactions"] = []
                 audit_data.append(wallet_data)
         return audit_data
     
