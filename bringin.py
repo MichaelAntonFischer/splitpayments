@@ -474,7 +474,9 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
             logger.info("Setting targets for the wallet")
-            target = Target(id=None, source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
+            from lnbits.helpers import urlsafe_short_hash
+            target_id = urlsafe_short_hash()
+            target = Target(id=target_id, source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
             await set_targets(wallet_id, [target])
             logger.info("Targets set")
             return {"lnurl": lnurl}
