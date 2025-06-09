@@ -291,7 +291,26 @@ class APITester:
         # Test audit endpoints
         results["audit_all"] = await self.test_bringin_audit()
         
-        # Use dynamic test addresses
+        # Test with real user first
+        real_user = "michaelantonf@bringin.xyz"
+        temp_user = "test-michaelantonf@bringin.xyz"
+        
+        logger.info(f"\n🔍 Testing Real User Operations: {real_user}")
+        results["audit_real_user"] = await self.test_bringin_audit(real_user)
+        
+        # Update real user to temp address
+        results["update_to_temp"] = await self.test_update_bringin_user(real_user, temp_user)
+        
+        # Check audit for temp user
+        results["audit_temp_user"] = await self.test_bringin_audit(temp_user)
+        
+        # Update back to original address
+        results["update_to_original"] = await self.test_update_bringin_user(temp_user, real_user)
+        
+        # Final check of original user
+        results["audit_final_check"] = await self.test_bringin_audit(real_user)
+        
+        # Use dynamic test addresses for non-existing user tests
         results["audit_single"] = await self.test_bringin_audit(self.test_address)
         results["add_user"] = await self.test_add_bringin_user(self.test_address)
         
