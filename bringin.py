@@ -15,6 +15,106 @@ API_BASE_URL = 'https://api.bringin.xyz'
 BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
 BRINGIN_ENDPOINT_OFFRAMP = '/api/v0/offramp/order'
 
+# OAuth Token cache to avoid repeated authentication
+_oauth_token_cache = None
+_oauth_token_expiry = 0
+
+async def get_oauth_token(admin_key: str, base_url: str = "https://bringin.opago-pay.com") -> str:
+    """
+    Get OAuth Bearer token for LNbits v1.1.0 authentication.
+    Uses superuser username/password authentication with token caching.
+    """
+    global _oauth_token_cache, _oauth_token_expiry
+    
+    # Check if we have a valid cached token
+    current_time = time.time()
+    if _oauth_token_cache and current_time < _oauth_token_expiry:
+        return _oauth_token_cache
+    
+    # Get superuser credentials from environment
+    opago_user = os.environ.get('OPAGO_USER')
+    opago_pwd = os.environ.get('OPAGO_PWD')
+    
+    if not opago_user or not opago_pwd:
+        logger.error("OPAGO_USER and OPAGO_PWD environment variables are required for LNbits v1.1.0 authentication")
+        # Fallback to admin key as Bearer token
+        return admin_key
+    
+    # Authenticate with LNbits OAuth system using username/password
+    auth_endpoint = f"{base_url}/api/v1/auth"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Authenticate using superuser username and password
+            auth_data = {
+                "username": opago_user,
+                "password": opago_pwd
+            }
+            
+            response = await client.post(auth_endpoint, json=auth_data)
+            
+            if response.status_code == 200:
+                auth_result = response.json()
+                token = auth_result.get("access_token")
+                
+                if token:
+                    # Cache the token for 50 minutes (assuming 1-hour expiry)
+                    _oauth_token_cache = token
+                    _oauth_token_expiry = current_time + 3000  # 50 minutes
+                    logger.info("Successfully obtained OAuth token using username/password")
+                    return token
+                else:
+                    logger.warning("Authentication succeeded but no access_token in response")
+            else:
+                logger.error(f"OAuth authentication failed with status {response.status_code}: {response.text}")
+            
+            # If username/password auth fails, try with alternative credentials format
+            alt_auth_data = {
+                "email": opago_user,
+                "password": opago_pwd
+            }
+            
+            alt_response = await client.post(auth_endpoint, json=alt_auth_data)
+            
+            if alt_response.status_code == 200:
+                alt_result = alt_response.json()
+                token = alt_result.get("access_token")
+                
+                if token:
+                    _oauth_token_cache = token
+                    _oauth_token_expiry = current_time + 3000  # 50 minutes
+                    logger.info("Successfully obtained OAuth token using email/password")
+                    return token
+            
+            # If all OAuth methods fail, fallback to admin key as Bearer token
+            logger.warning("OAuth authentication failed, using admin key as Bearer token fallback")
+            return admin_key
+            
+    except Exception as e:
+        logger.error(f"OAuth authentication error: {str(e)}")
+        # Fallback to using admin key as Bearer token
+        return admin_key
+
+async def get_auth_headers(admin_key: str, base_url: str = "https://bringin.opago-pay.com") -> dict:
+    """
+    Get authentication headers for LNbits v1.1.0 API calls.
+    Returns Bearer token headers instead of deprecated X-Api-Key.
+    """
+    try:
+        # Try OAuth first
+        token = await get_oauth_token(admin_key, base_url)
+        return {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+    except Exception as e:
+        logger.error(f"Failed to get OAuth token: {str(e)}")
+        # Fallback to admin key as Bearer (for compatibility)
+        return {
+            "Authorization": f"Bearer {admin_key}",
+            "Content-Type": "application/json"
+        }
+
 async def offramp(lightning_address, amount_sats):
     # Example placeholders - replace with actual values or logic to obtain them
     ip_address = await fetch_public_ip()
@@ -121,10 +221,7 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
 
 async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, lnaddress: str):
     url = "https://bringin.opago-pay.com/users/api/v1/user"
-    headers = {
-        "X-Api-Key": os.environ['OPAGO_KEY'],
-        "Content-type": "application/json"
-    }
+    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
     data = {
         "id": admin_id,  # LNbits expects 'id' for user creation
         "username": user_name,
@@ -154,10 +251,7 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
 async def activate_extensions(user_id: str, extensions: List[str]):
     # LNbits v1.1.0: Enable extension for user (if possible)
     # This is not a direct replacement, but we can try enabling for the user
-    headers = {
-        "X-Api-Key": os.environ['OPAGO_KEY'],
-        "Content-type": "application/json"
-    }
+    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
             url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
@@ -170,7 +264,7 @@ async def activate_extensions(user_id: str, extensions: List[str]):
 
 async def delete_user(user_id: str):
     admin_key = os.environ["OPAGO_KEY"]
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key)
     url = f"https://bringin.opago-pay.com/users/api/v1/user/{user_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
@@ -179,10 +273,7 @@ async def delete_user(user_id: str):
 
 async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
-    headers = {
-        "X-Api-Key": admin_key,
-        "Content-type": "application/json"
-    }
+    headers = await get_auth_headers(admin_key)
     username = lightning_address.split("@")[0]
     
     if bringin_max is None:
@@ -214,7 +305,7 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
         raise HTTPException(status_code=500, detail=str(e))
     
 async def delete_lnurlp_link(pay_id: str, admin_key: str):
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key)
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
@@ -224,7 +315,8 @@ async def delete_lnurlp_link(pay_id: str, admin_key: str):
 
 async def get_bringin_audit_data(admin_key: str, include_transactions: bool = False, lnaddress: str = None):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
@@ -263,7 +355,8 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
     
 async def add_bringin_user(lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
@@ -304,7 +397,8 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
     
 async def update_bringin_user(old_lightning_address: str, new_lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
@@ -345,8 +439,9 @@ async def cleanup_resources(lnurl, user_id, admin_key):
     try:
         if lnurl:
             # Fetch the list of payment links using the admin key
+            headers = await get_auth_headers(admin_key, base_url)
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers={"X-Api-Key": admin_key})
+                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers=headers)
                 response.raise_for_status()
                 pay_links = response.json()
 

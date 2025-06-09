@@ -234,23 +234,23 @@ jobs:
               print(f"Error: data is not a list, it's {type(data)}")
               sys.exit(1)
           
-          # Filter with safety checks
+          # Filter with safety checks - preserve static-release but remove other splitpayments entries
           original_count = len(data)
           safe_data = []
           for ext in data:
               if isinstance(ext, dict):
-                  if ext.get('id') != 'splitpayments':
+                  # Keep non-splitpayments entries and the static-release entry
+                  if ext.get('id') != 'splitpayments' or ext.get('version') == 'static-release':
                       safe_data.append(ext)
               else:
                   print(f"Warning: skipping non-dict item: {ext}")
           
           data = safe_data
           removed_count = original_count - len(data)
-          print(f"Removed {removed_count} existing splitpayments entries")
+          print(f"Removed {removed_count} existing splitpayments entries (preserved static-release)")
           
           if is_rc:
               # For RC versions, remove other RC versions of the same clean version
-              # Since we already removed all splitpayments entries, we need to check all extensions again
               before_rc_cleanup = len(data)
               safe_data = []
               for ext in data:
@@ -258,15 +258,16 @@ jobs:
                       # Keep all non-splitpayments entries
                       if ext.get('id') != 'splitpayments':
                           safe_data.append(ext)
-                      # For splitpayments entries, only keep if not an RC of the same clean version
-                      elif not ext.get('version', '').startswith(clean_version + '-rc'):
+                      # For splitpayments entries, keep static-release and non-RC versions of the same clean version
+                      elif (ext.get('version') == 'static-release' or 
+                            not ext.get('version', '').startswith(clean_version + '-rc')):
                           safe_data.append(ext)
                   else:
                       print(f"Warning: skipping non-dict item during RC cleanup: {ext}")
               
               data = safe_data
               rc_removed = before_rc_cleanup - len(data)
-              print(f"Removed {rc_removed} other RC versions for {clean_version}")
+              print(f"Removed {rc_removed} other RC versions for {clean_version} (preserved static-release)")
           
           # Add the new entry
           data.append(new_entry)
