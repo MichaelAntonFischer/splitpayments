@@ -159,6 +159,7 @@ jobs:
           echo "- Is RC: $IS_RC"
           echo "- Clean Version: $CLEAN_VERSION"
           echo "- Hash: $HASH"
+          echo "- Archive URL: $ARCHIVE_URL"
           
           # Update extensions.json using Python
           python3 << 'EOF'
@@ -201,6 +202,13 @@ jobs:
           archive_url = os.environ.get('ARCHIVE_URL', '')
           
           print(f"Processing version: {version}, is_rc: {is_rc}")
+          print(f"Archive URL: {archive_url}")
+          print(f"Hash: {hash_value}")
+          
+          # Validate required fields
+          if not version or not hash_value or not archive_url:
+              print(f"Missing required fields: version='{version}', hash='{hash_value}', archive_url='{archive_url}'")
+              sys.exit(1)
           
           # Create the new entry
           new_entry = {
@@ -208,6 +216,7 @@ jobs:
             "repo": "https://github.com/${{ github.repository }}",
             "name": "Split Payments",
             "version": version,
+            "min_lnbits_version": "0.11.2",
             "short_description": "Have payments split between multiple wallets automatically",
             "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
             "archive": archive_url,
@@ -286,4 +295,5 @@ jobs:
           IS_RC: ${{ steps.get_version.outputs.is_rc }}
           CLEAN_VERSION: ${{ steps.get_version.outputs.clean_version }}
           HASH: ${{ steps.calculate_hash.outputs.hash }}
+          ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.zip
 
