@@ -254,32 +254,21 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def activate_extensions(user_id: str, extensions: List[str], wallet_admin_key: str = None):
-    # LNbits v1.1.0: Enable extensions for individual user accounts
-    # Extensions must be pre-installed at instance level, but users need to enable them individually
-    
-    # Use the user's wallet admin key instead of superuser OAuth to avoid global state issues
-    if wallet_admin_key:
-        headers = {
-            "X-Api-Key": wallet_admin_key,
-            "Content-Type": "application/json"
-        }
-        logger.info(f"Using wallet admin key for extension activation for user {user_id}")
-    else:
-        # Fallback to OAuth headers if no wallet admin key provided
-        headers = await get_auth_headers(os.environ['OPAGO_KEY'])
-        logger.info(f"Using superuser OAuth for extension activation for user {user_id}")
+async def enable_user_extensions(user_id: str, extensions: List[str], wallet_admin_key: str):
+    """
+    Enable extensions for individual user accounts (user-level, not instance-level)
+    Uses /api/v1/extension/{ext_id}/enable endpoint which is user-scoped
+    Different from /api/v1/extension/{ext_id}/activate which is instance-level/global
+    """
+    headers = {
+        "X-Api-Key": wallet_admin_key,
+        "Content-Type": "application/json"
+    }
     
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
-            # Enable extension for this specific user
-            if wallet_admin_key:
-                # Use direct API call with wallet admin key (user-scoped)
-                enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
-            else:
-                # Use OAuth with user parameter (might affect global state)
-                enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
-                
+            # Use the user-level enable endpoint (not the global activate endpoint)
+            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
             try:
                 response = await client.put(enable_url, headers=headers)
                 if response.status_code == 200:
@@ -511,9 +500,9 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             user_update_response.raise_for_status()
             logger.info(f"✅ Updated username to user ID: {user_id[:20]}")
             
-            # Enable extensions for the user using their wallet admin key
+            # Enable extensions for the user using user-level enable (not global activate)
             logger.info("Enabling extensions for the user")
-            await activate_extensions(user_id, ["splitpayments", "lnurlp"], wallet_admin_key=admin_key)
+            await enable_user_extensions(user_id, ["splitpayments", "lnurlp"], admin_key)
             logger.info("Extensions enabled")
             logger.info("Creating LNURLp link")
             lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
