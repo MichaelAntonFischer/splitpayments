@@ -255,36 +255,41 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
         raise HTTPException(status_code=500, detail=str(e))
 
 async def activate_extensions(user_id: str, extensions: List[str], wallet_admin_key: str = None):
-    # LNbits v1.1.0: Enable AND activate extensions for user 
-    # Extension requires both enable and activate steps
-    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+    # LNbits v1.1.0: Enable extensions for individual user accounts
+    # Extensions must be pre-installed at instance level, but users need to enable them individually
+    
+    # Use the user's wallet admin key instead of superuser OAuth to avoid global state issues
+    if wallet_admin_key:
+        headers = {
+            "X-Api-Key": wallet_admin_key,
+            "Content-Type": "application/json"
+        }
+        logger.info(f"Using wallet admin key for extension activation for user {user_id}")
+    else:
+        # Fallback to OAuth headers if no wallet admin key provided
+        headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+        logger.info(f"Using superuser OAuth for extension activation for user {user_id}")
     
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
-            # Step 1: Enable extension for user
-            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
+            # Enable extension for this specific user
+            if wallet_admin_key:
+                # Use direct API call with wallet admin key (user-scoped)
+                enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
+            else:
+                # Use OAuth with user parameter (might affect global state)
+                enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
+                
             try:
                 response = await client.put(enable_url, headers=headers)
                 if response.status_code == 200:
-                    logger.info(f"✅ Extension {ext_id} enabled successfully for user {user_id}")
+                    logger.info(f"✅ Extension {ext_id} enabled for user {user_id}")
                 else:
                     logger.warning(f"Failed to enable extension {ext_id} for user {user_id}: {response.status_code} - {response.text}")
-                    continue  # Skip activation if enable failed
             except Exception as e:
                 logger.warning(f"Could not enable extension {ext_id} for user {user_id}: {e}")
-                continue
-                
-            # Step 2: Activate extension for user
-            activate_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/activate?usr={user_id}"
-            try:
-                response = await client.put(activate_url, headers=headers)
-                if response.status_code == 200:
-                    logger.info(f"✅ Extension {ext_id} activated successfully for user {user_id}")
-                else:
-                    logger.warning(f"Failed to activate extension {ext_id} for user {user_id}: {response.status_code} - {response.text}")
-            except Exception as e:
-                logger.warning(f"Could not activate extension {ext_id} for user {user_id}: {e}")
-    return {"extensions": "updated"}
+    
+    return {"extensions": "enabled"}
 
 async def delete_user(user_id: str):
     admin_key = os.environ["OPAGO_KEY"]
@@ -420,23 +425,43 @@ async def generate_safe_username(lightning_address: str, existing_users: list = 
     if len(clean_username) < 3:
         clean_username = f"user{clean_username}123"
     
+    # Truncate to maximum 20 characters for LNbits limit
+    MAX_USERNAME_LENGTH = 20
+    
     # Handle collisions by checking existing usernames
     if existing_users:
         existing_usernames = {user.get("username", "") for user in existing_users}
-        base_username = clean_username[:15]  # Leave room for collision suffix
+        
+        # Start with the clean username, truncated to leave room for collision counter
+        base_username = clean_username[:17]  # Leave room for up to 3-digit counter (e.g., "123")
         counter = 1
         final_username = base_username
         
-        while final_username in existing_usernames:
-            final_username = f"{base_username}{counter}"
-            counter += 1
-            if len(final_username) > 20:  # LNbits username length limit
-                base_username = base_username[:12]  # Make more room
-                final_username = f"{base_username}{counter}"
+        # If base username is too long even without collision counter, truncate further
+        if len(final_username) > MAX_USERNAME_LENGTH:
+            final_username = base_username[:MAX_USERNAME_LENGTH]
         
-        return final_username
+        while final_username in existing_usernames:
+            # Calculate how much room we need for the counter
+            counter_str = str(counter)
+            max_base_length = MAX_USERNAME_LENGTH - len(counter_str)
+            
+            # Ensure base doesn't exceed the calculated length
+            truncated_base = clean_username[:max_base_length]
+            final_username = f"{truncated_base}{counter}"
+            
+            counter += 1
+            # Safety check to prevent infinite loop
+            if counter > 999:
+                # Fall back to a unique username with timestamp
+                import time
+                timestamp_suffix = str(int(time.time()))[-6:]  # Last 6 digits of timestamp
+                final_username = f"user{timestamp_suffix}"
+                break
+        
+        return final_username[:MAX_USERNAME_LENGTH]  # Final safety truncation
     
-    return clean_username[:20]  # Ensure max length compliance
+    return clean_username[:MAX_USERNAME_LENGTH]  # Ensure max length compliance
 
 async def add_bringin_user(lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
@@ -453,8 +478,10 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
         
         admin_id = os.environ['OPAGO_ID']
-        # Generate safe username with collision detection
-        user_name = await generate_safe_username(lightning_address, users_data)
+        # Use a simple temporary username for initial creation (will be updated to user ID after creation)
+        import time
+        temp_suffix = str(int(time.time()))[-8:]  # Last 8 digits of timestamp
+        user_name = f"temp{temp_suffix}"  # 12 characters max, well under 20 char limit
         wallet_name = "Offramp"
         user_id = None
         lnurl = None
@@ -466,10 +493,28 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             admin_key = user_data["wallets"][0]["adminkey"]
             wallet_id = user_data["wallets"][0]["id"]
             logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
-            # Temporarily commenting out extension activation to test if this is causing global extension disable
-            # logger.info("Activating extensions for the user")
-            # await activate_extensions(user_id, ["splitpayments", "lnurlp"])
-            # logger.info("Extensions activated")
+            
+            # Update the username to use the LNbits user ID (max 20 characters)
+            logger.info("Updating username to use LNbits user ID")
+            user_update_data = {
+                "id": user_id,  # Required field - must match URL path
+                "username": user_id[:20],  # Use user ID as username (truncated to 20 chars)
+                "email": lightning_address,  # Keep the email
+                "user_config": user_data.get("config", {})
+            }
+            
+            user_update_response = await client.put(
+                f"{base_url}/users/api/v1/user/{user_id}", 
+                headers=headers, 
+                json=user_update_data
+            )
+            user_update_response.raise_for_status()
+            logger.info(f"✅ Updated username to user ID: {user_id[:20]}")
+            
+            # Enable extensions for the user using their wallet admin key
+            logger.info("Enabling extensions for the user")
+            await activate_extensions(user_id, ["splitpayments", "lnurlp"], wallet_admin_key=admin_key)
+            logger.info("Extensions enabled")
             logger.info("Creating LNURLp link")
             lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
