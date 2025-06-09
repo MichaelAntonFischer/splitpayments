@@ -8,7 +8,7 @@ import hashlib
 from loguru import logger
 from fastapi import HTTPException
 from typing import List
-from .crud import set_targets
+from .crud import set_targets, get_targets
 from .models import Target
 
 API_BASE_URL = 'https://api.bringin.xyz'
@@ -228,8 +228,8 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
 async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, lnaddress: str):
     url = "https://bringin.opago-pay.com/users/api/v1/user"
     headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+    # LNbits 1.1.0 - Don't specify 'id' field, let the system generate it
     data = {
-        "id": admin_id,  # LNbits expects 'id' for user creation
         "username": user_name,
         "email": lnaddress,
         "password": os.environ.get('DEFAULT_USER_PASSWORD', "changeme123"),
@@ -412,39 +412,113 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
     headers = await get_auth_headers(admin_key, base_url)
     
     async with httpx.AsyncClient() as client:
+        # Get all users to check for conflicts and find the target user
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
         users_data = users_response.json().get("data", users_response.json())
+        
+        # Check if new lightning address already exists
         for user in users_data:
             if user["email"] == new_lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
-        user_id = None
+        
+        # Find the user with the old lightning address
+        target_user = None
         for user in users_data:
             if user["email"] == old_lightning_address:
-                user_id = user["id"]
+                target_user = user
                 break
-        if not user_id:
+        
+        if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
+        
+        user_id = target_user["id"]
+        
+        # Get user's wallets
         wallets_response = await client.get(f"{base_url}/users/api/v1/user/{user_id}/wallet", headers=headers)
         wallets_response.raise_for_status()
         wallets_data = wallets_response.json()
+        
+        # Find the main wallet
         wallet_id = None
-        admin_key = None
+        wallet_admin_key = None
         for wallet in wallets_data:
             if wallet["user"] == user_id:
                 wallet_id = wallet["id"]
-                admin_key = wallet["adminkey"]
+                wallet_admin_key = wallet["adminkey"]
                 break
+        
         if not wallet_id:
             raise HTTPException(status_code=404, detail="Wallet not found")
-        new_lnurl = await create_lnurlp_link(new_lightning_address, admin_key)
+        
+        # Step 1: Update user's email field in LNbits (applying migration learnings)
+        user_update_data = {
+            "id": user_id,  # Required field - must match URL path
+            "username": target_user.get("username", ""),
+            "email": new_lightning_address,  # Update this field
+            "user_config": target_user.get("config", {})
+        }
+        
+        user_update_response = await client.put(
+            f"{base_url}/users/api/v1/user/{user_id}", 
+            headers=headers, 
+            json=user_update_data
+        )
+        user_update_response.raise_for_status()
+        logger.info(f"✅ Updated user {user_id} email: {old_lightning_address} -> {new_lightning_address}")
+        
+        # Step 2: Update LNURLP link
+        # Delete old LNURLP link
         old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=headers)
         old_lnurl_response.raise_for_status()
         old_lnurl_data = old_lnurl_response.json()
         if old_lnurl_data:
             old_lnurl_id = old_lnurl_data[0]["id"]
-            await delete_lnurlp_link(old_lnurl_id, admin_key)
-        return {"lnurl": new_lnurl}
+            await delete_lnurlp_link(old_lnurl_id, wallet_admin_key)
+            logger.info(f"✅ Deleted old LNURLP link: {old_lnurl_id}")
+        
+        # Create new LNURLP link
+        new_lnurl = await create_lnurlp_link(new_lightning_address, wallet_admin_key)
+        logger.info(f"✅ Created new LNURLP link: {new_lnurl}")
+        
+        # Step 3: Update split targets (replace old lightning address with new one)
+        # get_targets, set_targets and Target are already imported at the top
+        
+        # Get current targets
+        current_targets = await get_targets(wallet_id)
+        
+        # Update targets that reference the old lightning address
+        updated_targets = []
+        for target in current_targets:
+            if target.wallet == old_lightning_address:
+                # Update target to use new lightning address
+                updated_target = Target(
+                    id=target.id,
+                    source=target.source,
+                    wallet=new_lightning_address,  # Update this field
+                    percent=target.percent,
+                    alias=target.alias
+                )
+                updated_targets.append(updated_target)
+                logger.info(f"✅ Updated split target: {old_lightning_address} -> {new_lightning_address}")
+            else:
+                # Keep existing target unchanged
+                updated_targets.append(target)
+        
+        # Save updated targets
+        await set_targets(wallet_id, updated_targets)
+        
+        return {
+            "lnurl": new_lnurl,
+            "user_id": user_id,
+            "old_address": old_lightning_address,
+            "new_address": new_lightning_address,
+            "updates": {
+                "user_email": "updated",
+                "lnurlp_link": "updated",
+                "split_targets": "updated"
+            }
+        }
     
 async def cleanup_resources(lnurl, user_id, admin_key):
     base_url = "https://bringin.opago-pay.com"
