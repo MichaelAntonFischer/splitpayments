@@ -257,18 +257,16 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
 async def enable_user_extensions(user_id: str, extensions: List[str], wallet_admin_key: str):
     """
     Enable extensions for individual user accounts (user-level, not instance-level)
-    Uses /api/v1/extension/{ext_id}/enable endpoint which is user-scoped
+    Uses /api/v1/extension/{ext_id}/enable endpoint with proper user context
     Different from /api/v1/extension/{ext_id}/activate which is instance-level/global
     """
-    headers = {
-        "X-Api-Key": wallet_admin_key,
-        "Content-Type": "application/json"
-    }
+    # Use OAuth headers with user context for user-level extension operations
+    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
     
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
-            # Use the user-level enable endpoint (not the global activate endpoint)
-            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
+            # Use the user-level enable endpoint with user context parameter
+            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
             try:
                 response = await client.put(enable_url, headers=headers)
                 if response.status_code == 200:
