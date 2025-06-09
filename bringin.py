@@ -254,16 +254,28 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def activate_extensions(user_id: str, extensions: List[str]):
-    # LNbits v1.1.0: Enable extension for user (if possible)
-    # This is not a direct replacement, but we can try enabling for the user
-    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+async def activate_extensions(user_id: str, extensions: List[str], wallet_admin_key: str = None):
+    # LNbits v1.1.0: Enable extension for user's wallet
+    # Use the wallet's admin key for proper authentication
+    if wallet_admin_key:
+        # Use wallet admin key for extension activation (LNURLP requires wallet context)
+        headers = {
+            "X-Api-Key": wallet_admin_key,
+            "Content-Type": "application/json"
+        }
+    else:
+        # Fallback to OAuth for user extensions
+        headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+    
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
             url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
-            # The API expects a PUT, and may require wallet/user context
             try:
-                await client.put(url, headers=headers)
+                response = await client.put(url, headers=headers)
+                if response.status_code == 200:
+                    logger.info(f"✅ Extension {ext_id} enabled successfully")
+                else:
+                    logger.warning(f"Failed to enable extension {ext_id}: {response.status_code} - {response.text}")
             except Exception as e:
                 logger.warning(f"Could not enable extension {ext_id}: {e}")
     return {"extensions": "updated"}
@@ -437,7 +449,7 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             wallet_id = user_data["wallets"][0]["id"]
             logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
             logger.info("Activating extensions for the user")
-            await activate_extensions(user_id, ["splitpayments", "lnurlp"])
+            await activate_extensions(user_id, ["splitpayments", "lnurlp"], admin_key)
             logger.info("Extensions activated")
             logger.info("Creating LNURLp link")
             lnurl = await create_lnurlp_link(lightning_address, admin_key)
