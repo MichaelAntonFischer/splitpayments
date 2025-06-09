@@ -466,9 +466,10 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             admin_key = user_data["wallets"][0]["adminkey"]
             wallet_id = user_data["wallets"][0]["id"]
             logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
-            logger.info("Activating extensions for the user")
-            await activate_extensions(user_id, ["splitpayments", "lnurlp"])
-            logger.info("Extensions activated")
+            # Temporarily commenting out extension activation to test if this is causing global extension disable
+            # logger.info("Activating extensions for the user")
+            # await activate_extensions(user_id, ["splitpayments", "lnurlp"])
+            # logger.info("Extensions activated")
             logger.info("Creating LNURLp link")
             lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
