@@ -255,22 +255,35 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
         raise HTTPException(status_code=500, detail=str(e))
 
 async def activate_extensions(user_id: str, extensions: List[str], wallet_admin_key: str = None):
-    # LNbits v1.1.0: Enable extension for user 
-    # Extension activation requires OAuth with user context, not wallet admin key
+    # LNbits v1.1.0: Enable AND activate extensions for user 
+    # Extension requires both enable and activate steps
     headers = await get_auth_headers(os.environ['OPAGO_KEY'])
     
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
-            # Use usr parameter to specify which user to enable extension for
-            url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
+            # Step 1: Enable extension for user
+            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
             try:
-                response = await client.put(url, headers=headers)
+                response = await client.put(enable_url, headers=headers)
                 if response.status_code == 200:
                     logger.info(f"✅ Extension {ext_id} enabled successfully for user {user_id}")
                 else:
                     logger.warning(f"Failed to enable extension {ext_id} for user {user_id}: {response.status_code} - {response.text}")
+                    continue  # Skip activation if enable failed
             except Exception as e:
                 logger.warning(f"Could not enable extension {ext_id} for user {user_id}: {e}")
+                continue
+                
+            # Step 2: Activate extension for user
+            activate_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/activate?usr={user_id}"
+            try:
+                response = await client.put(activate_url, headers=headers)
+                if response.status_code == 200:
+                    logger.info(f"✅ Extension {ext_id} activated successfully for user {user_id}")
+                else:
+                    logger.warning(f"Failed to activate extension {ext_id} for user {user_id}: {response.status_code} - {response.text}")
+            except Exception as e:
+                logger.warning(f"Could not activate extension {ext_id} for user {user_id}: {e}")
     return {"extensions": "updated"}
 
 async def delete_user(user_id: str):
