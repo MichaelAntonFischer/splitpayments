@@ -279,7 +279,11 @@ async def delete_user(user_id: str):
 
 async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
-    headers = await get_auth_headers(admin_key)
+    # LNURLP plugin still uses X-Api-Key authentication in LNbits v1.1.0
+    headers = {
+        "X-Api-Key": admin_key,
+        "Content-Type": "application/json"
+    }
     
     # Extract username from lightning address for LNURLP creation
     # This defines the lightning address: username@domain.com
@@ -314,7 +318,11 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
         raise HTTPException(status_code=500, detail=str(e))
     
 async def delete_lnurlp_link(pay_id: str, admin_key: str):
-    headers = await get_auth_headers(admin_key)
+    # LNURLP plugin still uses X-Api-Key authentication in LNbits v1.1.0
+    headers = {
+        "X-Api-Key": admin_key,
+        "Content-Type": "application/json"
+    }
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
@@ -507,8 +515,12 @@ async def update_bringin_user(old_lightning_address: str, new_lightning_address:
         logger.info(f"✅ Updated user {user_id} email: {old_lightning_address} -> {new_lightning_address}")
         
         # Step 2: Update LNURLP link
-        # Delete old LNURLP link
-        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=headers)
+        # Delete old LNURLP link (LNURLP plugin still uses X-Api-Key authentication)
+        lnurlp_headers = {
+            "X-Api-Key": wallet_admin_key,
+            "Content-Type": "application/json"
+        }
+        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=lnurlp_headers)
         old_lnurl_response.raise_for_status()
         old_lnurl_data = old_lnurl_response.json()
         if old_lnurl_data:
@@ -563,10 +575,13 @@ async def cleanup_resources(lnurl, user_id, admin_key):
     base_url = "https://bringin.opago-pay.com"
     try:
         if lnurl:
-            # Fetch the list of payment links using the admin key
-            headers = await get_auth_headers(admin_key, base_url)
+            # Fetch the list of payment links using the admin key (LNURLP plugin still uses X-Api-Key)
+            lnurlp_headers = {
+                "X-Api-Key": admin_key,
+                "Content-Type": "application/json"
+            }
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers=headers)
+                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers=lnurlp_headers)
                 response.raise_for_status()
                 pay_links = response.json()
 
