@@ -14,7 +14,7 @@ jobs:
     if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # Configure Git user name and email
       - name: Configure Git
@@ -26,8 +26,8 @@ jobs:
       - name: Set static tag and release name
         id: set_static_name
         run: |
-          echo "::set-output name=tag::static-release"
-          echo "::set-output name=release_name::Static Release"
+          echo "tag=static-release" >> $GITHUB_OUTPUT
+          echo "release_name=Static Release" >> $GITHUB_OUTPUT
 
       # Check if tag exists and delete it if it does
       - name: Delete existing tag
@@ -70,24 +70,32 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Get version from tag
         id: get_version
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          echo "::set-output name=version::$VERSION"
-          echo "::set-output name=is_rc::$(echo $VERSION | grep -q 'rc' && echo 'true' || echo 'false')"
-          echo "::set-output name=clean_version::$(echo $VERSION | sed 's/-rc[0-9]*$//')"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if echo "$VERSION" | grep -q 'rc'; then
+            echo "is_rc=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_rc=false" >> $GITHUB_OUTPUT
+          fi
+          CLEAN_VERSION=$(echo "$VERSION" | sed 's/-rc[0-9]*$//')
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+          echo "Processing version: $VERSION"
+          echo "Is RC: $(echo "$VERSION" | grep -q 'rc' && echo 'true' || echo 'false')"
+          echo "Clean version: $CLEAN_VERSION"
 
       - name: Create version release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          release_name: Split Payments ${{ steps.get_version.outputs.version }}
+          name: Split Payments ${{ steps.get_version.outputs.version }}
           body: |
             Release ${{ steps.get_version.outputs.version }} of Split Payments extension for LNbits.
             
@@ -95,22 +103,43 @@ jobs:
           draft: false
           prerelease: ${{ steps.get_version.outputs.is_rc }}
 
+      - name: Wait for release to be available
+        run: |
+          echo "Waiting for GitHub to make the release archive available..."
+          sleep 30
+
       - name: Calculate SHA256 hash
         id: calculate_hash
         run: |
           # Download the release archive
           ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.zip"
-          wget -O release.zip "$ARCHIVE_URL"
+          echo "Downloading archive from: $ARCHIVE_URL"
+          
+          # Retry logic for downloading
+          for i in {1..5}; do
+            if wget -O release.zip "$ARCHIVE_URL"; then
+              break
+            else
+              echo "Download attempt $i failed, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+          
+          if [ ! -f release.zip ]; then
+            echo "Failed to download release archive after 5 attempts"
+            exit 1
+          fi
           
           # Calculate SHA256 hash
           HASH=$(sha256sum release.zip | cut -d' ' -f1)
-          echo "::set-output name=hash::$HASH"
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
           echo "Archive URL: $ARCHIVE_URL"
           echo "SHA256 Hash: $HASH"
 
       - name: Update extensions.json
         run: |
           # Clone the extensions repository
+          echo "Cloning extensions repository..."
           git clone https://github.com/MichaelAntonFischer/lnbits-extensions.git extensions-repo
           cd extensions-repo
           
@@ -118,62 +147,70 @@ jobs:
           git config user.name "Cursor-MCP-MAF"
           git config user.email "actions@github.com"
           
-          # Prepare the new extension entry
+          # Prepare variables
           VERSION="${{ steps.get_version.outputs.version }}"
           IS_RC="${{ steps.get_version.outputs.is_rc }}"
           CLEAN_VERSION="${{ steps.get_version.outputs.clean_version }}"
           HASH="${{ steps.calculate_hash.outputs.hash }}"
           ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/refs/tags/$VERSION.zip"
           
-                     # Create the new extension entry
-           NEW_ENTRY=$(cat <<EOF
-           {
-             "id": "splitpayments",
-             "repo": "https://github.com/${{ github.repository }}",
-             "name": "Split Payments",
-             "version": "$VERSION",
-             "short_description": "Have payments split between multiple wallets automatically",
-             "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
-             "archive": "$ARCHIVE_URL",
-             "hash": "$HASH"
-           }
-           EOF
-           )
+          echo "Updating extensions.json with:"
+          echo "- Version: $VERSION"
+          echo "- Is RC: $IS_RC"
+          echo "- Clean Version: $CLEAN_VERSION"
+          echo "- Hash: $HASH"
           
           # Update extensions.json using Python
           python3 << 'EOF'
           import json
           import sys
+          import os
           
           # Read current extensions.json
-          with open('extensions.json', 'r') as f:
-              data = json.load(f)
+          try:
+              with open('extensions.json', 'r') as f:
+                  data = json.load(f)
+              print(f"Loaded {len(data)} existing extensions")
+          except Exception as e:
+              print(f"Error reading extensions.json: {e}")
+              sys.exit(1)
           
-                     # Get the new entry details
-           new_entry = {
-             "id": "splitpayments",
-             "repo": "https://github.com/${{ github.repository }}",
-             "name": "Split Payments",
-             "version": "${{ steps.get_version.outputs.version }}",
-             "short_description": "Have payments split between multiple wallets automatically",
-             "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
-             "archive": "https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.zip",
-             "hash": "${{ steps.calculate_hash.outputs.hash }}"
-           }
+          # Get environment variables
+          version = os.environ.get('VERSION', '')
+          is_rc = os.environ.get('IS_RC', 'false') == 'true'
+          clean_version = os.environ.get('CLEAN_VERSION', '')
+          hash_value = os.environ.get('HASH', '')
+          archive_url = os.environ.get('ARCHIVE_URL', '')
           
-          is_rc = "${{ steps.get_version.outputs.is_rc }}" == "true"
-          clean_version = "${{ steps.get_version.outputs.clean_version }}"
+          print(f"Processing version: {version}, is_rc: {is_rc}")
+          
+          # Create the new entry
+          new_entry = {
+            "id": "splitpayments",
+            "repo": "https://github.com/${{ github.repository }}",
+            "name": "Split Payments",
+            "version": version,
+            "short_description": "Have payments split between multiple wallets automatically",
+            "icon": "https://raw.githubusercontent.com/${{ github.repository }}/main/static/image/split-payments.png",
+            "archive": archive_url,
+            "hash": hash_value
+          }
           
           # Remove existing entries for this extension
+          original_count = len(data)
           data = [ext for ext in data if ext.get('id') != 'splitpayments']
+          removed_count = original_count - len(data)
+          print(f"Removed {removed_count} existing splitpayments entries")
           
           if is_rc:
               # For RC versions, remove other RC versions of the same clean version
-              # Keep only the latest RC for each clean version
+              before_rc_cleanup = len(data)
               data = [ext for ext in data if not (
                   ext.get('id') == 'splitpayments' and 
                   ext.get('version', '').startswith(clean_version + '-rc')
               )]
+              rc_removed = before_rc_cleanup - len(data)
+              print(f"Removed {rc_removed} other RC versions for {clean_version}")
           
           # Add the new entry
           data.append(new_entry)
@@ -182,17 +219,21 @@ jobs:
           data.sort(key=lambda x: x.get('id', ''))
           
           # Write back to extensions.json
-          with open('extensions.json', 'w') as f:
-              json.dump(data, f, indent=2)
-          
-          print(f"Updated extensions.json with version ${{ steps.get_version.outputs.version }}")
+          try:
+              with open('extensions.json', 'w') as f:
+                  json.dump(data, f, indent=2)
+              print(f"Successfully updated extensions.json with version {version}")
+              print(f"Total extensions: {len(data)}")
+          except Exception as e:
+              print(f"Error writing extensions.json: {e}")
+              sys.exit(1)
           EOF
           
           # Check if there are changes to commit
           if git diff --quiet extensions.json; then
             echo "No changes to extensions.json"
           else
-            # Commit and push changes
+            echo "Committing changes to extensions.json"
             git add extensions.json
             git commit -m "Update splitpayments extension to $VERSION (created by Cursor-MCP-MAF)"
             git push https://${{ secrets.EXTENSIONS_REPO_TOKEN }}@github.com/MichaelAntonFischer/lnbits-extensions.git main
@@ -200,4 +241,8 @@ jobs:
           fi
         env:
           EXTENSIONS_REPO_TOKEN: ${{ secrets.EXTENSIONS_REPO_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.version }}
+          IS_RC: ${{ steps.get_version.outputs.is_rc }}
+          CLEAN_VERSION: ${{ steps.get_version.outputs.clean_version }}
+          HASH: ${{ steps.calculate_hash.outputs.hash }}
 
