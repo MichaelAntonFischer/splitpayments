@@ -8,12 +8,118 @@ import hashlib
 from loguru import logger
 from fastapi import HTTPException
 from typing import List
-from .crud import set_targets
+from .crud import set_targets, get_targets
 from .models import Target
 
 API_BASE_URL = 'https://api.bringin.xyz'
 BRINGIN_ENDPOINT_KEY = '/api/v0/application/api-key'
 BRINGIN_ENDPOINT_OFFRAMP = '/api/v0/offramp/order'
+
+# OAuth Token cache to avoid repeated authentication
+_oauth_token_cache = None
+_oauth_token_expiry = 0
+
+async def get_oauth_token(admin_key: str, base_url: str = "https://bringin.opago-pay.com") -> str:
+    """
+    Get OAuth Bearer token for LNbits v1.1.0 authentication.
+    Uses superuser username/password authentication with token caching.
+    """
+    global _oauth_token_cache, _oauth_token_expiry
+    
+    # Check if we have a valid cached token
+    current_time = time.time()
+    if _oauth_token_cache and current_time < _oauth_token_expiry:
+        return _oauth_token_cache
+    
+    # Get superuser credentials from environment
+    opago_user = os.environ.get('OPAGO_USER')
+    opago_pwd = os.environ.get('OPAGO_PWD')
+    
+    # Strip quotes from environment variables (common issue with Docker compose)
+    if opago_user:
+        opago_user = opago_user.strip('"\'')
+    if opago_pwd:
+        opago_pwd = opago_pwd.strip('"\'')
+    
+    if not opago_user or not opago_pwd:
+        logger.error("OPAGO_USER and OPAGO_PWD environment variables are required for LNbits v1.1.0 authentication")
+        # Fallback to admin key as Bearer token
+        return admin_key
+    
+    # Authenticate with LNbits OAuth system using username/password
+    auth_endpoint = f"{base_url}/api/v1/auth"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Authenticate using superuser username and password
+            auth_data = {
+                "username": opago_user,
+                "password": opago_pwd
+            }
+            
+            response = await client.post(auth_endpoint, json=auth_data)
+            
+            if response.status_code == 200:
+                auth_result = response.json()
+                token = auth_result.get("access_token")
+                
+                if token:
+                    # Cache the token for 50 minutes (assuming 1-hour expiry)
+                    _oauth_token_cache = token
+                    _oauth_token_expiry = current_time + 3000  # 50 minutes
+                    logger.info("Successfully obtained OAuth token using username/password")
+                    return token
+                else:
+                    logger.warning("Authentication succeeded but no access_token in response")
+            else:
+                logger.error(f"OAuth authentication failed with status {response.status_code}: {response.text}")
+            
+            # If username/password auth fails, try with alternative credentials format
+            alt_auth_data = {
+                "email": opago_user,
+                "password": opago_pwd
+            }
+            
+            alt_response = await client.post(auth_endpoint, json=alt_auth_data)
+            
+            if alt_response.status_code == 200:
+                alt_result = alt_response.json()
+                token = alt_result.get("access_token")
+                
+                if token:
+                    _oauth_token_cache = token
+                    _oauth_token_expiry = current_time + 3000  # 50 minutes
+                    logger.info("Successfully obtained OAuth token using email/password")
+                    return token
+            
+            # If all OAuth methods fail, fallback to admin key as Bearer token
+            logger.warning("OAuth authentication failed, using admin key as Bearer token fallback")
+            return admin_key
+            
+    except Exception as e:
+        logger.error(f"OAuth authentication error: {str(e)}")
+        # Fallback to using admin key as Bearer token
+        return admin_key
+
+async def get_auth_headers(admin_key: str, base_url: str = "https://bringin.opago-pay.com") -> dict:
+    """
+    Get authentication headers for LNbits v1.1.0 API calls.
+    Returns Bearer token headers instead of deprecated X-Api-Key.
+    """
+    try:
+        # Try OAuth first
+        token = await get_oauth_token(admin_key, base_url)
+        return {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+    except Exception as e:
+        logger.error(f"Failed to get OAuth token: {str(e)}")
+        # Fallback to admin key as Bearer (for compatibility)
+        return {
+            "Authorization": f"Bearer {admin_key}",
+            "Content-Type": "application/json"
+        }
 
 async def offramp(lightning_address, amount_sats):
     # Example placeholders - replace with actual values or logic to obtain them
@@ -121,12 +227,9 @@ async def create_offramp_order(user_api_key, lightning_address, amount_sats, ip_
 
 async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, lnaddress: str):
     url = "https://bringin.opago-pay.com/users/api/v1/user"
-    headers = {
-        "X-Api-Key": os.environ['OPAGO_KEY'],
-        "Content-type": "application/json"
-    }
+    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+    # LNbits 1.1.0 - Don't specify 'id' field, let the system generate it
     data = {
-        "id": admin_id,  # LNbits expects 'id' for user creation
         "username": user_name,
         "email": lnaddress,
         "password": os.environ.get('DEFAULT_USER_PASSWORD', "changeme123"),
@@ -151,38 +254,60 @@ async def create_bringin_user(admin_id: str, user_name: str, wallet_name: str, l
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def activate_extensions(user_id: str, extensions: List[str]):
-    # LNbits v1.1.0: Enable extension for user (if possible)
-    # This is not a direct replacement, but we can try enabling for the user
-    headers = {
-        "X-Api-Key": os.environ['OPAGO_KEY'],
-        "Content-type": "application/json"
-    }
+async def enable_user_extensions(user_id: str, extensions: List[str], wallet_admin_key: str):
+    """
+    Enable extensions for individual user accounts (user-level, not instance-level)
+    Uses /api/v1/extension/{ext_id}/enable endpoint with proper user context
+    Different from /api/v1/extension/{ext_id}/activate which is instance-level/global
+    """
+    # Use OAuth headers with user context for user-level extension operations
+    headers = await get_auth_headers(os.environ['OPAGO_KEY'])
+    
     async with httpx.AsyncClient() as client:
         for ext_id in extensions:
-            url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable"
-            # The API expects a PUT, and may require wallet/user context
+            # Use the user-level enable endpoint with user context parameter
+            enable_url = f"https://bringin.opago-pay.com/api/v1/extension/{ext_id}/enable?usr={user_id}"
             try:
-                await client.put(url, headers=headers)
+                response = await client.put(enable_url, headers=headers)
+                if response.status_code == 200:
+                    logger.info(f"✅ Extension {ext_id} enabled for user {user_id}")
+                else:
+                    logger.warning(f"Failed to enable extension {ext_id} for user {user_id}: {response.status_code} - {response.text}")
             except Exception as e:
-                logger.warning(f"Could not enable extension {ext_id}: {e}")
-    return {"extensions": "updated"}
+                logger.warning(f"Could not enable extension {ext_id} for user {user_id}: {e}")
+    
+    return {"extensions": "enabled"}
 
 async def delete_user(user_id: str):
     admin_key = os.environ["OPAGO_KEY"]
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key)
     url = f"https://bringin.opago-pay.com/users/api/v1/user/{user_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
         if response.status_code != 200:
             raise Exception(f"Failed to delete user: {response.text}")
 
-async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max: int = None, bringin_min: int = None):
+async def create_lnurlp_link(lightning_address: str, admin_key: str, user_id: str = None, bringin_max: int = None, bringin_min: int = None):
     url = "https://bringin.opago-pay.com/lnurlp/api/v1/links"
-    headers = {
-        "X-Api-Key": admin_key,
-        "Content-type": "application/json"
-    }
+    
+    # LNURLP plugin requires X-Api-Key authentication even when extension is enabled via OAuth
+    # Use superuser admin key when operating on user-enabled extensions
+    if user_id:
+        # Use superuser admin key for user-enabled extensions
+        headers = {
+            "X-Api-Key": os.environ['OPAGO_KEY'],
+            "Content-Type": "application/json"
+        }
+        url += f"?usr={user_id}"
+    else:
+        # Use provided admin key for direct wallet operations
+        headers = {
+            "X-Api-Key": admin_key,
+            "Content-Type": "application/json"
+        }
+    
+    # Extract username from lightning address for LNURLP creation
+    # This defines the lightning address: username@domain.com
     username = lightning_address.split("@")[0]
     
     if bringin_max is None:
@@ -195,7 +320,7 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
         "max": bringin_max,
         "min": 1,
         "comment_chars": 210,
-        "username": username
+        "username": username  # This sets the lightning address part before @domain.com
     }
 
     try:
@@ -213,18 +338,24 @@ async def create_lnurlp_link(lightning_address: str, admin_key: str, bringin_max
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-async def delete_lnurlp_link(pay_id: str, admin_key: str):
-    headers = {"X-Api-Key": admin_key}
+async def delete_lnurlp_link(pay_id: str, admin_key: str, use_superuser: bool = False):
+    # LNURLP plugin uses X-Api-Key authentication in LNbits v1.1.0
+    # Use superuser key for user-enabled extensions
+    headers = {
+        "X-Api-Key": os.environ['OPAGO_KEY'] if use_superuser else admin_key,
+        "Content-Type": "application/json"
+    }
     url = f"https://bringin.opago-pay.com/lnurlp/api/v1/links/{pay_id}"
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
-        if response.status_code != 204:
-            raise Exception(f"Failed to delete LNURLp link: {response.text}")
+        response.raise_for_status()  # This will handle 200 OK responses properly
+        # Note: LNbits returns 200 with {"success":true} instead of 204
 
 
 async def get_bringin_audit_data(admin_key: str, include_transactions: bool = False, lnaddress: str = None):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
@@ -245,34 +376,99 @@ async def get_bringin_audit_data(admin_key: str, include_transactions: bool = Fa
             wallets_data = wallets_response.json()
             for wallet in wallets_data:
                 wallet_id = wallet["id"]
-                balance_response = await client.get(f"{base_url}/api/v1/wallet/{wallet_id}", headers=headers)
-                balance_response.raise_for_status()
-                wallet_balance_data = balance_response.json()
+                # In LNbits v1.1.0, wallet balance is already in the wallet data
+                # No need for separate API call to get balance
                 wallet_data = {
                     "user_id": user_id,
                     "user_email": user["email"],
                     "wallet_id": wallet_id,
-                    "wallet_balance": wallet_balance_data.get("balance_msat", 0) // 1000
+                    "wallet_balance": wallet.get("balance_msat", 0) // 1000
                 }
                 if include_transactions:
-                    tx_response = await client.get(f"{base_url}/api/v1/payments?wallet_id={wallet_id}", headers=headers)
-                    tx_response.raise_for_status()
-                    wallet_data["transactions"] = tx_response.json()
+                    # Use the wallet's admin key for payments API instead of superuser OAuth
+                    wallet_admin_key = wallet.get("adminkey")
+                    if wallet_admin_key:
+                        # Create headers with wallet's admin key instead of OAuth
+                        wallet_headers = {"X-Api-Key": wallet_admin_key}
+                        tx_response = await client.get(f"{base_url}/api/v1/payments", headers=wallet_headers)
+                        tx_response.raise_for_status()
+                        wallet_data["transactions"] = tx_response.json()
+                    else:
+                        wallet_data["transactions"] = []
                 audit_data.append(wallet_data)
         return audit_data
     
+async def generate_safe_username(lightning_address: str, existing_users: list = None) -> str:
+    """Generate a safe username that meets LNbits validation requirements and avoids collisions."""
+    raw_username = lightning_address.split("@")[0]
+    
+    # Clean username for LNbits validation: only alphanumeric, must start with letter
+    import re
+    clean_username = re.sub(r'[^a-zA-Z0-9]', '', raw_username)
+    
+    # Ensure it starts with letter and has minimum length
+    if not clean_username or not clean_username[0].isalpha():
+        clean_username = "user" + clean_username
+    if len(clean_username) < 3:
+        clean_username = f"user{clean_username}123"
+    
+    # Truncate to maximum 20 characters for LNbits limit
+    MAX_USERNAME_LENGTH = 20
+    
+    # Handle collisions by checking existing usernames
+    if existing_users:
+        existing_usernames = {user.get("username", "") for user in existing_users}
+        
+        # Start with the clean username, truncated to leave room for collision counter
+        base_username = clean_username[:17]  # Leave room for up to 3-digit counter (e.g., "123")
+        counter = 1
+        final_username = base_username
+        
+        # If base username is too long even without collision counter, truncate further
+        if len(final_username) > MAX_USERNAME_LENGTH:
+            final_username = base_username[:MAX_USERNAME_LENGTH]
+        
+        while final_username in existing_usernames:
+            # Calculate how much room we need for the counter
+            counter_str = str(counter)
+            max_base_length = MAX_USERNAME_LENGTH - len(counter_str)
+            
+            # Ensure base doesn't exceed the calculated length
+            truncated_base = clean_username[:max_base_length]
+            final_username = f"{truncated_base}{counter}"
+            
+            counter += 1
+            # Safety check to prevent infinite loop
+            if counter > 999:
+                # Fall back to a unique username with timestamp
+                import time
+                timestamp_suffix = str(int(time.time()))[-6:]  # Last 6 digits of timestamp
+                final_username = f"user{timestamp_suffix}"
+                break
+        
+        return final_username[:MAX_USERNAME_LENGTH]  # Final safety truncation
+    
+    return clean_username[:MAX_USERNAME_LENGTH]  # Ensure max length compliance
+
 async def add_bringin_user(lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
         users_data = users_response.json().get("data", users_response.json())
+        
+        # Check if lightning address (email) already exists
         for user in users_data:
             if user["email"] == lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
+        
         admin_id = os.environ['OPAGO_ID']
-        user_name = lightning_address.split("@")[0]
+        # Use a simple temporary username for initial creation (will be updated to user ID after creation)
+        import time
+        temp_suffix = str(int(time.time()))[-8:]  # Last 8 digits of timestamp
+        user_name = f"temp{temp_suffix}"  # 12 characters max, well under 20 char limit
         wallet_name = "Offramp"
         user_id = None
         lnurl = None
@@ -284,14 +480,35 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
             admin_key = user_data["wallets"][0]["adminkey"]
             wallet_id = user_data["wallets"][0]["id"]
             logger.info(f"User created with ID: {user_id}, Invoice Key: {invoice_key}, Admin Key: {admin_key}, Wallet ID: {wallet_id}")
-            logger.info("Activating extensions for the user")
-            await activate_extensions(user_id, ["splitpayments", "lnurlp"])
-            logger.info("Extensions activated")
+            
+            # Update the username to use the LNbits user ID (max 20 characters)
+            logger.info("Updating username to use LNbits user ID")
+            user_update_data = {
+                "id": user_id,  # Required field - must match URL path
+                "username": user_id[:20],  # Use user ID as username (truncated to 20 chars)
+                "email": lightning_address,  # Keep the email
+                "user_config": user_data.get("config", {})
+            }
+            
+            user_update_response = await client.put(
+                f"{base_url}/users/api/v1/user/{user_id}", 
+                headers=headers, 
+                json=user_update_data
+            )
+            user_update_response.raise_for_status()
+            logger.info(f"✅ Updated username to user ID: {user_id[:20]}")
+            
+            # Enable extensions for the user using user-level enable (not global activate)
+            logger.info("Enabling extensions for the user")
+            await enable_user_extensions(user_id, ["splitpayments", "lnurlp"], admin_key)
+            logger.info("Extensions enabled")
             logger.info("Creating LNURLp link")
-            lnurl = await create_lnurlp_link(lightning_address, admin_key)
+            lnurl = await create_lnurlp_link(lightning_address, admin_key, user_id)
             logger.info(f"LNURLp link created: {lnurl}")
             logger.info("Setting targets for the wallet")
-            target = Target(source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
+            from lnbits.helpers import urlsafe_short_hash
+            target_id = urlsafe_short_hash()
+            target = Target(id=target_id, source=wallet_id, wallet=lightning_address, percent=100, alias="Offramp Order")
             await set_targets(wallet_id, [target])
             logger.info("Targets set")
             return {"lnurl": lnurl}
@@ -304,49 +521,132 @@ async def add_bringin_user(lightning_address: str, admin_key: str):
     
 async def update_bringin_user(old_lightning_address: str, new_lightning_address: str, admin_key: str):
     base_url = "https://bringin.opago-pay.com"
-    headers = {"X-Api-Key": admin_key}
+    headers = await get_auth_headers(admin_key, base_url)
+    
     async with httpx.AsyncClient() as client:
+        # Get all users to check for conflicts and find the target user
         users_response = await client.get(f"{base_url}/users/api/v1/user", headers=headers)
         users_response.raise_for_status()
         users_data = users_response.json().get("data", users_response.json())
+        
+        # Check if new lightning address already exists
         for user in users_data:
             if user["email"] == new_lightning_address:
                 raise HTTPException(status_code=409, detail="Lightning address already exists")
-        user_id = None
+        
+        # Find the user with the old lightning address (email-based lookup)
+        target_user = None
         for user in users_data:
             if user["email"] == old_lightning_address:
-                user_id = user["id"]
+                target_user = user
                 break
-        if not user_id:
+        
+        if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
+        
+        user_id = target_user["id"]
+        
+        # Get user's wallets
         wallets_response = await client.get(f"{base_url}/users/api/v1/user/{user_id}/wallet", headers=headers)
         wallets_response.raise_for_status()
         wallets_data = wallets_response.json()
+        
+        # Find the main wallet
         wallet_id = None
-        admin_key = None
+        wallet_admin_key = None
         for wallet in wallets_data:
             if wallet["user"] == user_id:
                 wallet_id = wallet["id"]
-                admin_key = wallet["adminkey"]
+                wallet_admin_key = wallet["adminkey"]
                 break
+        
         if not wallet_id:
             raise HTTPException(status_code=404, detail="Wallet not found")
-        new_lnurl = await create_lnurlp_link(new_lightning_address, admin_key)
-        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?wallet={wallet_id}", headers=headers)
+        
+        # Step 1: Update user's email field in LNbits (applying migration learnings)
+        user_update_data = {
+            "id": user_id,  # Required field - must match URL path
+            "username": target_user.get("username", ""),
+            "email": new_lightning_address,  # Update this field
+            "user_config": target_user.get("config", {})
+        }
+        
+        user_update_response = await client.put(
+            f"{base_url}/users/api/v1/user/{user_id}", 
+            headers=headers, 
+            json=user_update_data
+        )
+        user_update_response.raise_for_status()
+        logger.info(f"✅ Updated user {user_id} email: {old_lightning_address} -> {new_lightning_address}")
+        
+        # Step 2: Update LNURLP link
+        # Delete old LNURLP link (use superuser key for user-enabled extensions)
+        lnurlp_headers = {
+            "X-Api-Key": os.environ['OPAGO_KEY'],
+            "Content-Type": "application/json"
+        }
+        old_lnurl_response = await client.get(f"{base_url}/lnurlp/api/v1/links?usr={user_id}", headers=lnurlp_headers)
         old_lnurl_response.raise_for_status()
         old_lnurl_data = old_lnurl_response.json()
         if old_lnurl_data:
             old_lnurl_id = old_lnurl_data[0]["id"]
-            await delete_lnurlp_link(old_lnurl_id, admin_key)
-        return {"lnurl": new_lnurl}
+            await delete_lnurlp_link(old_lnurl_id, wallet_admin_key, use_superuser=True)
+            logger.info(f"✅ Deleted old LNURLP link: {old_lnurl_id}")
+        
+        # Create new LNURLP link (use user context for extension compatibility)
+        new_lnurl = await create_lnurlp_link(new_lightning_address, wallet_admin_key, user_id)
+        logger.info(f"✅ Created new LNURLP link: {new_lnurl}")
+        
+        # Step 3: Update split targets (replace old lightning address with new one)
+        # get_targets, set_targets and Target are already imported at the top
+        
+        # Get current targets
+        current_targets = await get_targets(wallet_id)
+        
+        # Update targets that reference the old lightning address
+        updated_targets = []
+        for target in current_targets:
+            if target.wallet == old_lightning_address:
+                # Update target to use new lightning address
+                updated_target = Target(
+                    id=target.id,
+                    source=target.source,
+                    wallet=new_lightning_address,  # Update this field
+                    percent=target.percent,
+                    alias=target.alias
+                )
+                updated_targets.append(updated_target)
+                logger.info(f"✅ Updated split target: {old_lightning_address} -> {new_lightning_address}")
+            else:
+                # Keep existing target unchanged
+                updated_targets.append(target)
+        
+        # Save updated targets
+        await set_targets(wallet_id, updated_targets)
+        
+        return {
+            "lnurl": new_lnurl,
+            "user_id": user_id,
+            "old_address": old_lightning_address,
+            "new_address": new_lightning_address,
+            "updates": {
+                "user_email": "updated",
+                "lnurlp_link": "updated",
+                "split_targets": "updated"
+            }
+        }
     
 async def cleanup_resources(lnurl, user_id, admin_key):
     base_url = "https://bringin.opago-pay.com"
     try:
         if lnurl:
-            # Fetch the list of payment links using the admin key
+            # Fetch the list of payment links using superuser key for user-enabled extensions
+            lnurlp_headers = {
+                "X-Api-Key": os.environ['OPAGO_KEY'],
+                "Content-Type": "application/json"
+            }
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{base_url}/lnurlp/api/v1/links", headers={"X-Api-Key": admin_key})
+                response = await client.get(f"{base_url}/lnurlp/api/v1/links?usr={user_id}", headers=lnurlp_headers)
                 response.raise_for_status()
                 pay_links = response.json()
 
@@ -359,7 +659,7 @@ async def cleanup_resources(lnurl, user_id, admin_key):
 
             if pay_id:
                 logger.info(f"Deleting LNURLp link: {pay_id}")
-                await delete_lnurlp_link(pay_id, admin_key)
+                await delete_lnurlp_link(pay_id, admin_key, use_superuser=True)
                 logger.info("LNURLp link deleted")
             else:
                 logger.warning(f"No matching payment link found for lnurl: {lnurl}")

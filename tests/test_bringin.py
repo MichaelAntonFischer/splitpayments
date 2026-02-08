@@ -7,7 +7,7 @@ import hmac
 import hashlib
 
 # Default standard API base and prefix (no /upgrades/)
-DEFAULT_API_BASE = "https://devbringin.opago-pay.com/splitpayments/api/v1"
+DEFAULT_API_BASE = "https://bringin.opago-pay.com/splitpayments/api/v1"
 DEFAULT_API_PREFIX = "/splitpayments/api/v1"
 
 API_BASE = os.environ.get("API_BASE", DEFAULT_API_BASE)
